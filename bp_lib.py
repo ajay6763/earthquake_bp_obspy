@@ -3,6 +3,8 @@
 ##########################################################################
 from __future__ import division
 import obspy
+import sys,os,time
+
 from obspy.taup import TauPyModel
 from obspy.geodetics import locations2degrees
 from obspy.geodetics.base import gps2dist_azimuth
@@ -15,32 +17,356 @@ from copy import copy
 import warnings
 from obspy.signal.invsim import cosine_taper
 import numpy as np
-
+import math
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
 import matplotlib.transforms as mtransforms
-
-
-
-def crosscorr(t1,t2,P_cut,window,sps):
-    '''
+from mpl_toolkits.basemap import Basemap
+from obspy.imaging.beachball import beach
+import numpy as np
+########### 
+def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
+    count = len(it)
+    def show(j):
+        x = int(size*j/count)
+        print("{}[{}{}] {}/{}".format(prefix, "#"*x, "."*(size-x), j, count), 
+                end='\r', file=out, flush=True)
+    show(0)
+    for i, item in enumerate(it):
+        yield item
+        show(i+1)
+    print("\n", flush=True, file=out)
+def save_stream_info(stream_for_bp):
+    sta = []
+    sta_lat = []
+    sta_long = []
+    dist = []
+    azimuth = []
+    corr = []
+    shift = []
+    sign = []
+    P_arrival = []
+    for tr in stream_for_bp:
+        sta.append(tr.stats.station)
+        sta_long.append(tr.stats.station_longitude)
+        sta_lat.append(tr.stats.station_latitude)
+        dist.append(tr.stats.Dist)
+        azimuth.append(tr.stats.Azimuth)
+        P_arrival.append(tr.stats.P_arrival)
+        corr.append(tr.stats.Corr_coeff)
+        shift.append(tr.stats.Corr_shift)
+        sign.append(tr.stats.Corr_sign)
+    to_save = np.zeros_like(sta)
+    to_save = np.column_stack((to_save,sta))
+    to_save = np.column_stack((to_save,sta_long))
+    to_save = np.column_stack((to_save,sta_lat))
+    to_save = np.column_stack((to_save,dist))
+    to_save = np.column_stack((to_save,azimuth))
+    to_save = np.column_stack((to_save,P_arrival))
+    to_save = np.column_stack((to_save,corr))
+    to_save = np.column_stack((to_save,shift))
+    to_save = np.column_stack((to_save,sign))
+    #np.save('array_bp_info',to_save,allow_pickle=True)
+    return to_save
+def nth_root_stacking(arr, n):
+    """
+    This function performs nth root stacking on a NumPy array
     
-    '''
-    st  = int((P_cut-window)*sps)
-    end = int((P_cut+window)*sps)
-    #print('Start:', (st), 'End :',  (end))
-    corr,lags=xcorr(t1[st:end],t2[st:end]);
+    Parameters:
+    arr (np.ndarray): NumPy array
+    n (int): nth root value
     
-    ## find location of maximum correlation
-    ind=np.where(corr==max(corr))
-    temp=ind[0].item()
-    #print(corr[temp])
-    shift=lags[temp]/sps;
-    if (corr[temp] < 0):
-        sign=-1;
+    Returns:
+    np.ndarray: nth root stacked array
+    """
+    
+    # Ensure that the input array is a NumPy array
+    arr = np.array(arr)
+    
+    # Perform nth root stacking
+    arr_stacked = np.vstack(np.power(arr, 1.0/n))
+    
+    return arr_stacked
+'''
+def station_info(stations,stream)
+'''
+def polarity(stream,window):
+    sign=1
+    for tr in stream:
+        t_corr = tr.stats['P_arrival'] + tr.stats.Corr_shift
+        cut = cut_window(tr, t_corr, -1*window, window)[0]
+        #cut=cut/np.max(cut)
+        mean=np.mean(cut)
+        if mean<0:
+            tr.stats['Corr_sign']=-1
+        else:
+            tr.stats['Corr_sign']=-1
+    return stream
+def event_plot(event_lat,event_long,sta_lat,sta_long,name):
+    fig, ax = plt.subplots(1, 1, sharex=False, sharey=False,figsize=(7,5))
+
+    #ind = np.where( (np.asarray(sta_azimuth[:])>=azimuth_min) & (np.asarray(sta_azimuth[:])<=azimuth_max) )
+
+    #map = Basemap(ax=ax,projection='merc',llcrnrlon=np.min(rheology[:,0]),llcrnrlat=np.min(rheology[:,1]),urcrnrlon=np.max(rheology[:,0]),urcrnrlat=np.max(rheology[:,1]),resolution='i',fix_aspect=2
+    #         )
+    map = Basemap(ax=ax,projection='aeqd',lon_0=event_long,lat_0=event_lat)
+
+    #map = Basemap(ax=ax,projection='npstere',lon_0=37)
+    #event_plot= map.scatter(event_long,event_lat,latlon=True,facecolor='none',edgecolors='red',marker='o',s=2,linewidths=0.2)
+    event_plot= map.scatter(event_long,event_lat,latlon=True,Truefacecolor='black',marker='*',label='Event')
+    event_plot= map.scatter(sta_long[:],sta_lat[:],latlon=True,facecolor='pink',marker='^',label='Selected')
+
+
+    # add an axis for the z colorbar
+    #cbar_ax = fig.add_axes()
+    # draw the colorbar
+    #cb = fig.colorbar(strength, cax=cbar_ax, label='strength',extend='both',pad=0.01)
+    map.drawcoastlines()
+    #map.shadedrelief()
+
+    #map.drawparallels(np.arange(-90,90,10),labels=[1,0,0,0])
+    #map.drawmeridians(np.arange(-180,180,10),labels=[1,1,0,1], rotation=0)
+    #map.c(rheology[ind[0][:],0],rheology[ind[0][:],1],latlon=True)
+    # fill continents 'coral' (with zorder=0), color wet areas 'aqua'
+    #map.drawmapboundary(fill_color='aqua')
+    #map.fillcontinents(color='coral',lake_color='aqua')
+    #plt.title('Day/Night Map for %s (UTC)')
+    #map.colorbar(label='sdfdsf')
+    #fig.colorbar(map,ax=map,orientation='horizontal',label='sdfdsf')
+    #ax.set_title('')
+    ax.set_xlabel('Longitude',labelpad=30)
+    ax.set_ylabel('Latitude', labelpad=40)
+    plt.legend()
+    #fig.suptitle(str(code)+' age')
+    plt.show()
+    plt.savefig(name+'.png',dpi=450)
+
+def data_plot(stream,event_lat,event_long,outdir,outname):
+    fig, ax = plt.subplots(1, 2, sharex=False, sharey=False,figsize=(10,3))
+    #map =  Basemap(projection='cyl', lon_0=event_long,lat_0=event_lat,
+    #        resolution='c',ax=ax[0])
+    width = 28e6
+    #map = Basemap(width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c',ax=ax[1])
+    map = Basemap(ax=ax[0],width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c')
+
+    for tr in stream:
+        map.scatter(tr.stats.station_longitude,tr.stats.station_latitude,latlon=True,facecolor='blue',marker='^')
+        time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
+        #tr.plot(starttime=t.stats.P_arrival-30,endtime=t.stats.P_arrival+60,type='relative')
+        #tr.plot(type='relative')
+        tr.normalize
+        ax[1].plot(time,tr.data /np.max(tr.data),color='gray')
+        #ax[1].plot(time,tr.data,color='gray')
+    map.scatter(event_long,event_lat,latlon=True,facecolor='red',marker='*')
+    map.drawcoastlines(linewidth=0.1)
+    x, y = map(event_long, event_lat)
+    #focmecs = Focal_mech
+    #ax = plt.gca()
+    #b = beach(focmecs, xy=(x, y), width=10, linewidth=1, alpha=0.85)
+    #b.set_zorder(10000000)
+    #ax.add_collection(b)
+    ## plot traces
+    plt.show()
+    fig.savefig(outdir+'/'+outname)
+
+
+
+def get_ref_station(stream):
+    """
+    """
+    x=[]
+    y=[]
+    for tr in stream:
+        x.append(tr.stats.station_longitude)
+        y.append(tr.stats.station_latitude)
+    n = len(x)
+    x_sum = np.sum(x)
+    y_sum = np.sum(y)
+    x_centroid = x_sum / n
+    y_centroid = y_sum / n
+
+    x_ref = None
+    y_ref = None
+    dist=np.array(np.sqrt((x[:]-x_centroid)**2+(y[:]-y_centroid)**2));
+    index=np.argmin(dist);
+    return index
+
+
+def get_ref_station_pev(stream,type,out_option):
+    sta_dist=[]
+    sta_azimuth=[]
+    for tr in stream:
+        sta_dist.append(tr.stats.Dist)
+        sta_azimuth.append(tr.stats.Azimuth)
+    if type=='mean':
+        mean_dist = np.mean(sta_dist)
+        dist=np.array((mean_dist-sta_dist)**2);
+        index_dist=dist.argmin();
+
+        mean_azimuth = np.mean(sta_azimuth)
+        dist=np.array((mean_azimuth-sta_azimuth)**2);
+        index_azimuth=dist.argmin();
     else:
-        sign=1;
-    return corr[temp],shift,sign
+        median_dist = np.median(sta_dist)
+        dist=np.array((median_dist-sta_dist)**2);
+        index_dist=dist.argmin();
+        median_azimuth = np.median(sta_azimuth)
+        dist=np.array((median_azimuth-sta_azimuth)**2);
+        index_azimuth=dist.argmin();
+
+    if out_option=='dist':
+        Ref_station_index=index_dist
+    else:
+        Ref_station_index=index_azimuth
+    return Ref_station_index
+
+
+def xcorr(x,y):
+    """
+    Perform Cross-Correlation on x and y
+    x    : 1st signal
+    y    : 2nd signal
+
+    returns
+    lags : lags of correlation
+    corr : coefficients of correlation
+    """
+    corr = signal.correlate(x, y, mode="full")
+    lags = signal.correlation_lags(len(x), len(y), mode="full")
+    return corr,lags
+
+def crosscorr_prev(t1_trace,t2_trace,window):
+    '''
+
+    '''
+    sps=int(t1_trace.stats['sampling_rate'])
+    #cc=obspy.signal.cross_correlation.correlate(t1_trace[ref_st:ref_end],t2_trace[st:end],demean=True,normalize='naive',method='auto',shift=window*sps)
+    cc=obspy.signal.cross_correlation.correlate(t1_trace,t2_trace,demean=True,normalize='naive',method='auto',shift=window*sps)
+    shift, value = obspy.signal.cross_correlation.xcorr_max(cc)
+    if (value < 0):
+            sign=-1;
+    else:
+            sign=1;
+
+    return abs(value),shift/sps,sign
+def crosscorr_stream_prev(stream,ref_trace,window):
+    '''
+    '''
+    for tr in stream:
+        corr,shift,sign = crosscorr_prev(ref_trace,tr,window)
+        tr.stats['Corr_coeff'] = corr
+        tr.stats['Corr_shift']  = shift
+        tr.stats['Corr_sign']  = sign
+        #tr.stats['Corr_coeff'] = 1
+        #tr.stats['Corr_shift']  = 0
+        #tr.stats['Corr_sign']  = 1
+        #except:
+        #    stream.remove(tr)
+    return stream
+def crosscorr(t1_trace,t2_trace,window):
+    '''
+
+    '''
+    sps=int(t1_trace.stats['sampling_rate'])
+    ref_st  = int(t1_trace.stats['P_arrival']-t1_trace.stats['origin_time']-window)*sps
+    ref_end = int(t1_trace.stats['P_arrival']-t1_trace.stats['origin_time']+window)*sps
+    st  = int(t2_trace.stats['P_arrival']-t2_trace.stats['origin_time']-window)*sps
+    end = int(t2_trace.stats['P_arrival']-t2_trace.stats['origin_time']+window)*sps
+    ref_st  = int(t1_trace.stats['P_arrival']-t1_trace.stats['origin_time']-window)*sps
+    ref_end = int(t1_trace.stats['P_arrival']-t1_trace.stats['origin_time']+window)*sps
+    st  = int(t2_trace.stats['P_arrival']-t2_trace.stats['origin_time']-window)*sps
+    end = int(t2_trace.stats['P_arrival']-t2_trace.stats['origin_time']+window)*sps
+    message='ok'
+    try:
+        #print('ok!')
+        cc=obspy.signal.cross_correlation.correlate(t1_trace[ref_st:ref_end],t2_trace[st:end],demean=True,normalize='naive',method='auto',shift=window*sps)
+        #cc=obspy.signal.cross_correlation.correlate(t1_trace,t2_trace,demean=True,normalize='naive',method='auto',shift=window*sps)
+        message='ok'
+        shift, value = obspy.signal.cross_correlation.xcorr_max(cc)
+        #print('Corr, Shift:',(value,shift/sps))
+        if (t2_trace[st+shift] < 0):
+            sign=-1;
+        else:
+            sign=1;
+    except:
+        #print('Not!')
+        #cc=obspy.signal.cross_correlation.correlate(t1_trace,t2_trace,demean=True,normalize='naive',method='auto',shift=window*sps)
+        message='not ok'
+        value=0
+        shift=0
+        sign=1
+    return abs(value),shift/sps,sign,message
+def crosscorr_stream(stream,ref_trace,window):
+    '''
+    '''
+    for tr in stream:
+        corr,shift,sign,message = crosscorr(ref_trace,tr,window)
+        if message=='ok':
+            tr.stats['Corr_coeff'] = corr
+            tr.stats['Corr_shift']  = shift
+            tr.stats['Corr_sign']  = sign
+        else:
+            stream.remove(tr)
+        #except:
+        #    stream.remove(tr)
+    return stream
+
+def crosscorr_stream_xcorr(stream,ref_trace,window):
+    '''
+    '''
+    for tr in stream:
+        '''
+        shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr, t_before=5, t_after=10, cc_maxlag=5) #,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+        tr.stats['Corr_coeff'] = value
+        tr.stats['Corr_shift']  = shift
+        tr.stats['Corr_sign']  = 1
+        '''
+        try:
+            shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
+                t_before=window, t_after=window, cc_maxlag=window/2)#,filter="bandpass",filter_options={'freqmin': 0.2, 'freqmax': 5})
+            tr.stats['Corr_coeff'] = value
+            tr.stats['Corr_shift']  = shift
+            tr.stats['Corr_sign']  = 1
+        except:
+            print('Could not cross-correlate! Hence remove this waveform.')
+            #tr.stats['Corr_coeff'] = corr
+            #tr.stats['Corr_shift']  = shift
+            #tr.stats['Corr_sign']  = 1
+            stream.remove(tr)
+
+    return stream
+
+def snr_calc(tr, noise_window, signal_window):
+    """
+    """
+    t_noise = tr.copy()
+    t_signal = tr.copy()
+    t_noise.trim(tr.stats['P_arrival']-noise_window,tr.stats['P_arrival'])
+    t_signal.trim(tr.stats['P_arrival'],tr.stats['P_arrival']+signal_window)
+
+    signal_amp = np.sqrt(np.mean(np.square(t_signal.data)))
+    noise_amp = np.sqrt(np.mean(np.square(t_noise.data)))
+    return signal_amp / noise_amp
+def snr_check(stream,SNR,t_before,t_after):
+    '''
+    This function checks if all the waveform data has 20 SPS. At the moment it can detect
+    all the possible values and can decimate to 20 SPS.
+    Sometimes waveforms have a SPS which not interger multiple of 20 SPS, I simply reject them.
+    Yes, you can decimate and interpolate these waveforms back 20 SPS but I choose not to play with
+    the signal and try to make them as original as possible without the interpolation that might
+    introduce "ärtifacts".
+    @ajay6763: MAKE THIS A ROBUST FUNCTION.
+    '''
+    for t in stream:
+        try:
+            snr=snr_calc(t,t_before,t_after)
+            if (snr >=  SNR):
+                pass
+            else:
+                stream.remove(t)
+        except:
+            stream.remove(t)
+    return stream
 
 def xcorr_pick_correction(pick1, trace1, pick2, trace2, t_before, t_after,
                           cc_maxlag, filter=None, filter_options={}):
@@ -48,22 +374,17 @@ def xcorr_pick_correction(pick1, trace1, pick2, trace2, t_before, t_after,
     Calculate the correction for the differential pick time determined by cross
     correlation of the waveforms in narrow windows around the pick times.
     For details on the fitting procedure refer to [Deichmann1992]_.
-
     The parameters depend on the epicentral distance and magnitude range. For
     small local earthquakes (Ml ~0-2, distance ~3-10 km) with consistent manual
     picks the following can be tried::
-
         t_before=0.05, t_after=0.2, cc_maxlag=0.10,
         filter="bandpass", filter_options={'freqmin': 1, 'freqmax': 20}
-
     The appropriate parameter sets can and should be determined/verified
     visually using the option `plot=True` on a representative set of picks.
-
     To get the corrected differential pick time calculate: ``((pick2 +
     pick2_corr) - pick1)``. To get a corrected differential travel time using
     origin times for both events calculate: ``((pick2 + pick2_corr - ot2) -
     (pick1 - ot1))``
-
     :type pick1: :class:`~obspy.core.utcdatetime.UTCDateTime`
     :param pick1: Time of pick for `trace1`.
     :type trace1: :class:`~obspy.core.trace.Trace`
@@ -215,10 +536,10 @@ def xcorr_pick_correction(pick1, trace1, pick2, trace2, t_before, t_after,
 
 def make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size):
     '''
-    This function makes potential source grid around the epicentre in a area 
-    defined by a constant source_grid_extend discretized at a constant 
+    This function makes potential source grid around the epicentre in a area
+    defined by a constant source_grid_extend discretized at a constant
     source_grid_size
-    Retunrs   slat ,slong 
+    Retunrs   slat ,slong
 
     '''
     x=np.arange(event_long-source_grid_extend,event_long+source_grid_extend,source_grid_size)
@@ -231,46 +552,48 @@ def make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size):
             slat.append(y[j])
     return slong,slat
 
+def make_source_grid_3D(event_long,event_lat,source_grid_extend,source_grid_size,depth_min,depth_max,depth_inc):
+    '''
+    This function makes potential source grid around the epicentre in a area
+    defined by a constant source_grid_extend discretized at a constant
+    source_grid_size
+    Retunrs   slat ,slong
+
+    '''
+    x=np.arange(event_long-source_grid_extend,event_long+source_grid_extend,source_grid_size)
+    y=np.arange(event_lat-source_grid_extend,event_lat+source_grid_extend,source_grid_size)
+    z=np.arange(depth_min,depth_max,depth_inc)
+    slat = []
+    slong = []
+    sdepth = []
+    for i in range(np.size(x)):
+        for j in range(np.size(y)):
+            for k in range(np.size(z)):
+                slong.append(x[i])
+                slat.append(y[j])
+                sdepth.append(z[k])
+    return slong,slat,sdepth
 def check_sps(stream):
     '''
     This function checks if all the waveform data has 20 SPS. At the moment it can detect
-    all the possible values and can decimate to 20 SPS. 
+    all the possible values and can decimate to 20 SPS.
     Sometimes waveforms have a SPS which not interger multiple of 20 SPS, I simply reject them.
     Yes, you can decimate and interpolate these waveforms back 20 SPS but I choose not to play with
     the signal and try to make them as original as possible without the interpolation that might
     introduce "ärtifacts".
-    @ajay6763: MAKE THIS A ROBUST FUNCTION. 
+    @ajay6763: MAKE THIS A ROBUST FUNCTION.
     '''
     # make a copy of the data and leave the original
-    stream_work=stream.copy()
-    for t in stream_work:
-        if (t.stats.sampling_rate==20. or t.stats.sampling_rate==40. or t.stats.sampling_rate==80.
-            or t.stats.sampling_rate==100. or t.stats.sampling_rate==120. or t.stats.sampling_rate==200.):
+    for t in stream:
+        if (t.stats.sampling_rate  == 20.):
             pass
-        #t.decimate(2)
-        #t.write
+        elif (t.stats.sampling_rate  < 15.):
+            stream.remove(t)
         else:
-            stream_work.remove(t)
-    
-    print('Total no of traces before decimation criteria:', len(stream))
-    print('Total no of traces after decimation criteria:', len(stream_work))
-    for t in stream_work:
-        if (t.stats.sampling_rate==20.):
-             pass
-        elif (t.stats.sampling_rate==40.):
-             t.decimate(2)
-        elif (t.stats.sampling_rate==50.):
-             t.resample(20.0)
-        elif (t.stats.sampling_rate==80.):
-             t.decimate(4)
-        elif (t.stats.sampling_rate==100.):
-             t.decimate(5)
-        elif (t.stats.sampling_rate==120.):
-             t.decimate(6)
-        elif (t.stats.sampling_rate==200.):
-             t.decimate(10)
-        else:
-            print("There are some traces that cannot be decimated 20 SPS. Please check the SPS of your data")
+            t.resample(20.0)
+        #        else:
+        #            print("There are some traces that cannot be decimated 20 SPS. Please check the SPS of your data")
+    return stream
 
 def check_distance(stream,min_distance,max_distance):
     '''
@@ -279,24 +602,130 @@ def check_distance(stream,min_distance,max_distance):
     '''
     # make a copy of the data and leave the original
     stream_work=stream.copy()
-    print('Total no of traces before :', len(stream))
+    #print('Total no of traces before :', len(stream))
     for t in stream_work:
-        if (t.stats.Dist > min_distance and t.stats.Dist < max_distance):
+        if (t.stats.Dist >= min_distance and t.stats.Dist <= max_distance):
             pass
         else:
             stream_work.remove(t)
+    #print('Total no of traces after :', len(stream_work))
+    return stream_work
+
+def check_distance_except(stream,min_distance,max_distance):
+    '''
+    This functions checks for distance (degrees) and only selecet waveforms
+    that are within a specified distance rage (i.e. to avoid core phases)
+    '''
+    # make a copy of the data and leave the original
+    stream_work=stream.copy()
+    #print('Total no of traces before :', len(stream))
+    for t in stream_work:
+        if (t.stats.Dist >= min_distance and t.stats.Dist <= max_distance):
+            stream_work.remove(t)
+        else:
+            pass
+    #print('Total no of traces after :', len(stream_work))
+    return stream_work
+
+def check_azimuth(stream,min_azimuth,max_azimuth):
+    '''
+    This functions checks for distance (degrees) and only selecet waveforms
+    that are within a specified distance rage (i.e. to avoid core phases)
+    '''
+    # make a copy of the data and leave the original
+    stream_work=stream.copy()
+    #print('Total no of traces before :', len(stream))
+    for t in stream_work:
+        if (t.stats.Azimuth >= min_azimuth and t.stats.Azimuth <= max_azimuth):
+            pass
+        else:
+            stream_work.remove(t)
+    #print('Total no of traces after :', len(stream_work))
+    return stream_work
+
+def check_baz(stream,min_baz,max_baz):
+    '''
+    This functions checks for distance (degrees) and only selecet waveforms
+    that are within a specified distance rage (i.e. to avoid core phases)
+    '''
+    # make a copy of the data and leave the original
+    stream_work=stream.copy()
+    #print('Total no of traces before :', len(stream))
+    for t in stream_work:
+        if (t.stats.Backazimuth >= min_baz and t.stats.Backazimuth <= max_baz):
+            pass
+        else:
+            stream_work.remove(t)
+    #print('Total no of traces after :', len(stream_work))
+    return stream_work
+
+def STA_LTA(stream,nsta,nlta,Start_P_cut_time):
+    '''
+    '''
+    for t in stream:
+        t.detrend
+        t.normalize
+        cft         = obspy.signal.trigger.recursive_sta_lta_py(t.data, int(nsta * t.stats.sampling_rate), 
+                      int(nlta * t.stats.sampling_rate))
+        time        = np.arange(0, t.stats.npts / t.stats.sampling_rate, t.stats.delta)
+        ind         = np.argmax(cft)
+        t.stats['STA_LTA_pick'] = t.stats.origin_time+time[ind]
+        t.stats['STA_LTA_shift'] = t.stats.P_arrival - t.stats.STA_LTA_pick
+        #print(t.stats.STA_LTA_pick,t.stats.STA_LTA_shift)
+
+        #if (abs(time[ind]-Start_P_cut_time) > 5 ):
+        #    stream.remove(t)
+        #    #pass
+        #else:
+        #    t.stats['STA_LTA_shift'] = time[ind]
+         
+    return stream
+def select_except(stream,min_azimuth,max_azimuth,min_dist,max_dist):
+    '''
+    This functions checks for distance (degrees) and only selecet waveforms
+    that are within a specified distance rage (i.e. to avoid core phases)
+    if (sta_azimuth[i]>=azimuth_min and sta_azimuth[i]<=azimuth_max and sta_dist[i] >= dist_min
+            and sta_dist[i]<=dist_max):
+    '''
+    # make a copy of the data and leave the original
+    stream_work=stream.copy()
+    #print('Total no of traces before :', len(stream))
+    for t in stream_work:
+        if (t.stats.Azimuth >= min_azimuth and t.stats.Azimuth <= max_azimuth  and t.stats.Dist >= min_dist and t.stats.Dist <= max_dist ):
+            print("###################")
+        else:
+            print("!!!!!!!!!!!!!!!!!!!")
+            stream_work.remove(t)
+    #print('Total no of traces after :', len(stream_work))
+    return stream_work
+
+def check_azimuth_except(stream,min_azimuth,max_azimuth):
+    '''
+    This functions checks for distance (degrees) and only selecet waveforms
+    that are within a specified distance rage (i.e. to avoid core phases)
+    '''
+    # make a copy of the data and leave the original
+    stream_work=stream.copy()
+    print('Total no of traces before :', len(stream))
+    for t in stream_work:
+        if (t.stats.Azimuth >= min_azimuth and t.stats.Azimuth <= max_azimuth):
+            stream_work.remove(t)
+        else:
+            pass
     print('Total no of traces after :', len(stream_work))
-    return stream_work    
+    return stream_work
 
 def cut_window(trace,T,Start,End):
     '''
     '''
     ## find index corresponding to the calculated travel time
     arrival_index = int((T-trace.stats.starttime)*trace.stats.sampling_rate)
-    start_index   = int((T+Start-trace.stats.starttime)*trace.stats.sampling_rate)
-    end_index     = int((T+End-trace.stats.starttime)*trace.stats.sampling_rate) 
+    #start_index = arrival_index - int(Start*trace.stats.sampling_rate)
+    #end_index = arrival_index + int(End*trace.stats.sampling_rate)
+
+    start_index   = int((T-Start-trace.stats.starttime)*trace.stats.sampling_rate)
+    end_index     = int((T+End-trace.stats.starttime)*trace.stats.sampling_rate)
     data          = trace.data
-    data          = data/np.max(data)
     cut           = data[start_index:end_index]
     width         = end_index-start_index
     # Finding sign of the wave at the arrival time
@@ -305,42 +734,8 @@ def cut_window(trace,T,Start,End):
     #    sign = -1
     #else:
     #    pass
-            
+
     return cut,width,sign
-
-def xcorr(x,y):
-    """
-    Perform Cross-Correlation on x and y
-    x    : 1st signal
-    y    : 2nd signal
-
-    returns
-    lags : lags of correlation
-    corr : coefficients of correlation
-    """
-    corr = signal.correlate(x, y, mode="full")
-    lags = signal.correlation_lags(len(x), len(y), mode="full")
-    return corr,lags
-def crosscorr(t1,t2,P_cut,window,sps):
-    '''
-    
-    '''
-    st  = int((P_cut-window)*sps)
-    end = int((P_cut+window)*sps)
-    #print('Start:', (st), 'End :',  (end))
-    corr,lags=xcorr(t1[st:end],t2[st:end]);
-    
-    ## find location of maximum correlation
-    ind=np.where(corr==max(corr))
-    temp=ind[0].item()
-    #print(corr[temp])
-    shift=lags[temp]/sps;
-    if (corr[temp] < 0):
-        sign=-1;
-    else:
-        sign=1;
-    return corr[temp],shift,sign
-
 
 def moving_average_time(data, w):
     return np.convolve(data, np.ones(w), 'same') / w
@@ -400,11 +795,9 @@ def plot_results(beam_plot,stf,event_long,event_lat,Array_name,slong,slat,stack_
     ax2[1].set_ylabel('Amplitude ')
     ax2[1].set_title('STF')
     fig2.savefig(str(Array_name)+'_BP_cumulative_STF.png', dpi=fig.dpi)
-    
-    
+
 def moving_average_time_beam(data):
-    return np.sum(data[:,:],axis=1) 
+    return np.sum(data[:,:],axis=1)
 
 def moving_average_space(data):
-    return np.sum(data[:,:],axis=0) 
-        
+    return np.sum(data[:,:],axis=0)
