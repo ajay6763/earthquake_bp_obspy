@@ -1,4 +1,7 @@
 **/.ipynb_checkpoints
-./data
-./exp
-./*.pdf
+**/__pycache__
+**/data
+**/exp
+**/dev
+**/*.pdf
+**./exp
