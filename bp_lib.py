@@ -46,6 +46,7 @@ def save_stream_info(stream_for_bp):
     shift = []
     sign = []
     P_arrival = []
+    #backazimuth = []
     for tr in stream_for_bp:
         sta.append(tr.stats.station)
         sta_long.append(tr.stats.station_longitude)
@@ -56,6 +57,7 @@ def save_stream_info(stream_for_bp):
         corr.append(tr.stats.Corr_coeff)
         shift.append(tr.stats.Corr_shift)
         sign.append(tr.stats.Corr_sign)
+        #backazimuth.append(tr.stats.Backazimuth)
     to_save = np.zeros_like(sta)
     to_save = np.column_stack((to_save,sta))
     to_save = np.column_stack((to_save,sta_long))
@@ -66,6 +68,7 @@ def save_stream_info(stream_for_bp):
     to_save = np.column_stack((to_save,corr))
     to_save = np.column_stack((to_save,shift))
     to_save = np.column_stack((to_save,sign))
+    #to_save = np.column_stack((to_save,backazimuth))
     #np.save('array_bp_info',to_save,allow_pickle=True)
     return to_save
 def nth_root_stacking(arr, n):
@@ -149,13 +152,20 @@ def data_plot(stream,event_lat,event_long,outdir,outname):
     #map = Basemap(width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c',ax=ax[1])
     map = Basemap(ax=ax[0],width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c')
 
+    count=0
     for tr in stream:
+        count=count+1
         map.scatter(tr.stats.station_longitude,tr.stats.station_latitude,latlon=True,facecolor='blue',marker='^')
         time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
         #tr.plot(starttime=t.stats.P_arrival-30,endtime=t.stats.P_arrival+60,type='relative')
         #tr.plot(type='relative')
-        tr.normalize
-        ax[1].plot(time,tr.data /np.max(tr.data),color='gray')
+        tr.normalize()
+        cut = tr.data  #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
+        #cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
+        cut=cut/np.max(cut) #+ count
+        cut=cut +count
+        time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
+        ax[1].plot(time,cut,color='black',linewidth=0.1)
         #ax[1].plot(time,tr.data,color='gray')
     map.scatter(event_long,event_lat,latlon=True,facecolor='red',marker='*')
     map.drawcoastlines(linewidth=0.1)
@@ -173,6 +183,9 @@ def data_plot(stream,event_lat,event_long,outdir,outname):
 
 def get_ref_station(stream):
     """
+    This function outputs the index of reference station (~centroid) in an array
+    Input: obspy stream with lat longs
+    Output: reference station index
     """
     x=[]
     y=[]
@@ -311,7 +324,7 @@ def crosscorr_stream(stream,ref_trace,window):
         #    stream.remove(tr)
     return stream
 
-def crosscorr_stream_xcorr(stream,ref_trace,window):
+def crosscorr_stream_xcorr(stream,ref_trace,window,bp_l,bp_u):
     '''
     '''
     for tr in stream:
@@ -323,10 +336,10 @@ def crosscorr_stream_xcorr(stream,ref_trace,window):
         '''
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
-                t_before=window, t_after=window, cc_maxlag=window/2)#,filter="bandpass",filter_options={'freqmin': 0.2, 'freqmax': 5})
+                t_before=window, t_after=window, cc_maxlag=window,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
             tr.stats['Corr_coeff'] = value
             tr.stats['Corr_shift']  = shift
-            tr.stats['Corr_sign']  = 1
+            tr.stats['Corr_sign']  = 1.0
         except:
             print('Could not cross-correlate! Hence remove this waveform.')
             #tr.stats['Corr_coeff'] = corr
@@ -341,12 +354,29 @@ def snr_calc(tr, noise_window, signal_window):
     """
     t_noise = tr.copy()
     t_signal = tr.copy()
-    t_noise.trim(tr.stats['P_arrival']-noise_window,tr.stats['P_arrival'])
-    t_signal.trim(tr.stats['P_arrival'],tr.stats['P_arrival']+signal_window)
+    '''   
+    try:
+        
+        try:
+            signal_amp = np.sqrt(np.mean(np.square(t_signal.data)))
+            noise_amp = np.sqrt(np.mean(np.square(t_noise.data)))
+            snr=signal_amp/noise_amp
+        except:
+            pass
+    except:
+        snr=-1
+    '''
+    t_noise.trim(t_noise.stats['P_arrival']-noise_window,t_noise.stats['P_arrival'])
+    t_signal.trim(t_signal.stats['P_arrival'],t_signal.stats['P_arrival']+signal_window)
+    if ( (len(t_noise.data) == 0) or (len(t_signal.data) == 0)):
+        #print(len(t_noise.data),len(t_signal.data))
+        snr=-1
+    else:
+        signal_amp = np.sqrt(np.mean(np.square(t_signal.data)))
+        noise_amp = np.sqrt(np.mean(np.square(t_noise.data)))
+        snr=signal_amp/noise_amp
 
-    signal_amp = np.sqrt(np.mean(np.square(t_signal.data)))
-    noise_amp = np.sqrt(np.mean(np.square(t_noise.data)))
-    return signal_amp / noise_amp
+    return snr
 def snr_check(stream,SNR,t_before,t_after):
     '''
     This function checks if all the waveform data has 20 SPS. At the moment it can detect
@@ -573,24 +603,24 @@ def make_source_grid_3D(event_long,event_lat,source_grid_extend,source_grid_size
                 slat.append(y[j])
                 sdepth.append(z[k])
     return slong,slat,sdepth
-def check_sps(stream):
+def check_sps(stream,sps):
     '''
     This function checks if all the waveform data has 20 SPS. At the moment it can detect
     all the possible values and can decimate to 20 SPS.
     Sometimes waveforms have a SPS which not interger multiple of 20 SPS, I simply reject them.
     Yes, you can decimate and interpolate these waveforms back 20 SPS but I choose not to play with
     the signal and try to make them as original as possible without the interpolation that might
-    introduce "ärtifacts".
+    introduce artifacts".
     @ajay6763: MAKE THIS A ROBUST FUNCTION.
     '''
     # make a copy of the data and leave the original
     for t in stream:
-        if (t.stats.sampling_rate  == 20.):
+        if (t.stats.sampling_rate  == sps):
             pass
-        elif (t.stats.sampling_rate  < 15.):
+        elif (t.stats.sampling_rate  < sps):
             stream.remove(t)
         else:
-            t.resample(20.0)
+            t.resample(sps)
         #        else:
         #            print("There are some traces that cannot be decimated 20 SPS. Please check the SPS of your data")
     return stream

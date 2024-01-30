@@ -24,7 +24,7 @@ num_cores = 12
 root_order = 2
 corr_window=10
 snr_window=10
-extra_label=''
+extra_label='_test'
 try:
     file = sys.argv[1]
     print('Input file is:',(file))
@@ -216,14 +216,14 @@ stream_SPS_dist_azimuth_SNR=stream_SPS_dist_azimuth.copy()
 print('Total no of traces before  SNR criteria:', len(stream_SPS_dist_azimuth_SNR))
 stream_SPS_dist_azimuth_SNR = bp_lib.snr_check(stream_SPS_dist_azimuth_SNR,SNR,snr_window,snr_window)
 print('Total no of traces after SNR criteria:', len(stream_SPS_dist_azimuth_SNR))
-
+'''
 ## get the displacement
-#for tr in stream_SPS_dist_azimuth_SNR:
-#    tr.detrend("linear")
-#    tr.integrate()
-#    #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
-#    tr.detrend("linear")
-
+for tr in stream_SPS_dist_azimuth_SNR:
+    tr.detrend("linear")
+    tr.integrate()
+    #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
+    tr.detrend("linear")
+'''
 ##########################################################################
 # finding reference station
 # the the station in the middle of the array
@@ -340,12 +340,21 @@ def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, st
     return source_stream_info
     #return np.power(np.mean(np.power(stack_reshaped, root_order), axis=0), 1/root_order)
 
-print('Writing the stream info in parallel.')
-results = Parallel(n_jobs=num_cores)(
-    delayed(process_location)(j, slat, slong, stream_for_bp, event_depth, origin_time, stack_start, stack_end)
-    for j in range(len(slat)) )
+#print('Writing the stream info in parallel.')
+#results = Parallel(n_jobs=num_cores)(
+#    delayed(process_location)(j, slat, slong, stream_for_bp, event_depth, origin_time, stack_start, stack_end)
+#    for j in range(len(slat)) )
 beam=[];
-beam = np.concatenate(results)
+for j in range(len(slat)):
+    source_stream_info=[]
+    for t in stream_for_bp:
+        distance = obspy.geodetics.locations2degrees(slat[j], slong[j], t.stats.station_latitude, t.stats.station_longitude)
+        arrivals = model.get_travel_times(source_depth_in_km=event_depth, distance_in_degree=distance, phase_list=["P"])
+        arr = arrivals[0]
+        t_travel = arr.time
+        t_total = origin_time + t_travel #+ t.stats.Corr_shift
+        source_stream_info.append([slat[j], slong[j],t.stats.station,t_total])
+    beam = np.concatenate(source_stream_info)
 np.save(outdir+'/'"beam_info",beam,allow_pickle=True)
 print('Writing the array info in parallel.')
 bp_info = bp_lib.save_stream_info(stream_for_bp)
