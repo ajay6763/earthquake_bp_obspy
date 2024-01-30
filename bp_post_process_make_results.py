@@ -32,21 +32,28 @@ def moving_average(x, w):
     return np.convolve(x, np.ones(w), 'same') / w
 
 
-name='EAF_7.7_JP_10.0km_ak135_0.5_grid_3_extend'
-scale=2
-bp_l=1
-bp_u=5
-path = os.getcwd()
+#name='KYR_7.0_EU_13.0km_iasp91_0.2_grid_'
+try:
+    name = sys.argv[1]
+    print('Input experiment is :',(name))
+except:
+    print('You did not provided experiment name (foleder). Aborting.') 
+    exit()
 outdir = name #str(Event)+'_'+str(Exp_name)
-smooth_time_window=10
-space_window=1
-peak_scale=5
+path = os.getcwd()
+scale=5
+peak_scale=7
+'''
+bp_l=0.4
+bp_u=8
+smooth_time_window=5
+smooth_space_window=4
 STF_start=0
-STF_end=100
+STF_end=30
 stack_start=30
 stack_end=200
 #stack_end=100
-
+'''
 
 input = pd.read_csv('./'+name+'/input.csv',header=None)
 a=input.to_dict('series')
@@ -56,6 +63,37 @@ res = {}
 for i in range(len(keys)):
         res[keys[i]] = values[i]
         #print(keys[i],values[i])
+#################################################################
+# bp info
+## BP parameters from the input file
+try:
+    bp_l = float(sys.argv[2])
+    bp_u = float(sys.argv[3])
+    print('bp_l and bp_u is,',(bp_l,bp_u))
+except:
+    bp_l                = float(res['bp_l']) #Hz
+    bp_u                = float(res['bp_u'])   #Hz
+
+    
+#bp_l                = float(res['bp_l']) #Hz
+#bp_u                = float(res['bp_u'])   #Hz
+smooth_time_window  = int(res['smooth_time_window'])   #seconds
+smooth_space_window = int(res['smooth_space_window'])
+stack_start         = int(res['stack_start'])   #in seconds
+stack_end           = int(res['stack_end'])  #in seconds
+STF_start           = int(res['STF_start'])
+STF_end             = int(res['STF_end'])
+sps                 = int(res['sps'])  #samples per seconds
+threshold_correlation=float(res['threshold_correlation'])
+SNR=float(res['SNR'])
+smooth_time_window=5
+smooth_space_window=5
+STF_start=0
+STF_end=40
+stack_start=30
+stack_end=70
+#bp_l=0.8
+#bp_u=5
 ##########################################################################
 # Event info
 Event=res['Event']
@@ -63,7 +101,7 @@ event_lat=float(res['event_lat'])
 event_long=float(res['event_long'])
 event_depth=float(res['event_depth'])
 Array_name=res['Array_name']
-Exp_name=res['Exp_name']
+#Exp_name=res['Exp_name']
 azimuth_min=float(res['azimuth_min'])
 azimuth_max=float(res['azimuth_max'])
 dist_min=float(res['dist_min'])
@@ -119,8 +157,8 @@ for t in stream_for_bp:
             t.stats['Azimuth']           = float(stream_info[ind,5])
             arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=t.stats.Dist,phase_list=["P"])
             arr                          = arrivals[0]
-            t_travel                     = arr.time;
-            t.stats['P_arrival']         = origin_time + t_travel +  timedelta(hours=9)
+            t_travel                     = arr.time
+            t.stats['P_arrival']         = origin_time + t_travel 
         
             #t.stats['P_arrival']         = float(stream_info[ind,6]) 
             t.stats['Corr_coeff']        = float(stream_info[ind,7])
@@ -176,19 +214,19 @@ stf_beam      = np.sum(beam_smoothened,axis=0)
 print('Size of STF:', np.shape(stf_beam))
 #Taking square becaouse we are interested in the power
 stf_beam=stf_beam**2
-stf_beam=stf_beam[stack_start*sps:(STF_end+stack_start)*sps]
+stf_beam=stf_beam[stack_start*sps:(stack_end)*sps]
 stf_beam=stf_beam/np.max(stf_beam)
 print('Size of STF:', np.shape(stf_beam))
 
 stf_beam=np.column_stack((stf_beam,range(len(stf_beam))))
 stf_beam[:,1]=stf_beam[:,1]/sps
 plt.plot(stf_beam[:,1],stf_beam[:,0])
-file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(space_window)+'.dat'
+file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,stf_beam,header='energy(normalized) time(s) ')  
 
 # Cumulative energy
 beam_cumulative_use=beam_smoothened.T
-temp     =np.sum(beam_cumulative_use[stack_start*sps:(STF_end+stack_start)*sps],axis=0)
+temp     =np.sum(beam_cumulative_use[stack_start*sps:(stack_end)*sps],axis=0)
 #temp     =np.sum(beam_smoothened,axis=1)
 print('Size of the cumulative energy:',np.shape(temp))
 np.size(temp)
@@ -200,12 +238,12 @@ cumulative_energy[:,1]=slat
 
 cumulative_energy[:,2]=cumulative_energy[:,2]/np.max(cumulative_energy[:,2])
 
-file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(space_window)+'.dat'
+file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,cumulative_energy,header='long lat energy(normalized)')
 
 print('Maximum energy of the cumulative energy:',np.max(cumulative_energy[:,2]))
 
-beam_peak_energy_use=beam_smoothened.T[stack_start*sps:(STF_end+stack_start)*sps]
+beam_peak_energy_use=beam_smoothened.T[stack_start*sps:(stack_end)*sps]
 print('Maximum energy of the beam:',np.max(beam_peak_energy_use))
 m,n=np.shape(beam_peak_energy_use)
 peak_energy=np.zeros((int(m/sps),4))
@@ -230,42 +268,21 @@ for i in range(len(dist_rupture)-1):
 peak_energy=np.column_stack((peak_energy,dist_rupture))
 peak_energy=np.column_stack((peak_energy,dist_rupture2))
 
-file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(space_window)+'.dat'
+file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
-
 plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
 plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
-
-#plt.plot(np.gradient(dist_rupture), peak_energy[st:end,0])
-
-
-#plt.plot(10*peak_energy[st:end,0],peak_energy[st:end,0],label='10 km/s')
-plt.plot(4.5*peak_energy[:,0],peak_energy[:,0],label='4.5 km/s')
-plt.plot(4*peak_energy[:,0],peak_energy[:,0],label='4 km/s')
-plt.plot(2*peak_energy[:,0],peak_energy[:,0],label='2.5 km/s')
-#plt.plot(1*peak_energy[st:end,0],peak_energy[st:end,0],label='1.0 km/s')
-plt.xlabel('distance (km)')
-plt.ylabel('tim (s)')
-plt.legend()
-plt.colorbar()
-plt.title(str(name)+'_'+str(smooth_time_window)+'_'+str(space_window))
-plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
-
-
+plt.title(str(name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window))
 plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
-
-#plt.plot(np.gradient(dist_rupture), peak_energy[st:end,0])
-
-
-#plt.plot(10*peak_energy[st:end,0],peak_energy[st:end,0],label='10 km/s')
 plt.plot(4.5*peak_energy[:,0],peak_energy[:,0],label='4.5 km/s')
 plt.plot(4*peak_energy[:,0],peak_energy[:,0],label='4 km/s')
 plt.plot(2*peak_energy[:,0],peak_energy[:,0],label='2.5 km/s')
 #plt.plot(1*peak_energy[st:end,0],peak_energy[st:end,0],label='1.0 km/s')
-plt.xlabel('distance (km)')
-plt.ylabel('tim (s)')
+plt.xlabel('Distance (km)')
+plt.ylabel('Time (s)')
 plt.legend()
 plt.colorbar()
+plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
 
 
 
@@ -273,18 +290,20 @@ plt.colorbar()
 stream_for_plot=stream_for_bp.copy()
 #aftershock=pd.read_csv('./data/Melgar_et_al_model/zenodo/aftershocks.xlsx')
 try:
-    aftershock_orig=pd.read_csv('./data/USGS_use.csv')
-    aftershock= aftershock_orig.loc[(aftershock_orig['relative_time'] <= 32835.731) & (aftershock_orig['mag'] >= 0.0) ]
-    aftershock_melgar=pd.read_csv('./data/Melgar_et_al_model/zenodo/Aftershocks_Melgar_et_al_2023.csv')
+    aftershocks=pd.read_csv('./data/kyrgyzstan-xinjiang-border_catalog.csv')
+    #aftershock= aftershock_orig.loc[(aftershock_orig['relative_time'] <= 32835.731) & (aftershock_orig['mag'] >= 0.0) ]
+    #aftershock_melgar=pd.read_csv('./data/Melgar_et_al_model/zenodo/Aftershocks_Melgar_et_al_2023.csv')
     #aftershock_dd=pd.read_csv('./data/Melgar_et_al_model/zenodo/aftershocks.csv')
     #faults = geopd.read_file('./data/Turkey_Emergency_EQ_Data/Turkey_Emergency_EQ_Data/simple_fault_2023-03-15/simple_fault_2023-3-15.shp')
 except:
     pass
+
+source_grid_extend=1 #source_grid_extend/2
 region=[event_long-source_grid_extend,event_long+source_grid_extend,event_lat-source_grid_extend,event_lat+source_grid_extend]
 
 #region=[35.5,39,36,39]
 #region=[35.5,39.5,36,38.5]
-title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_T'+str(smooth_time_window)+'_Space'+str(space_window)
+title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)
 sta_lat=[]
 sta_long=[]
 for tr in stream_for_bp:
@@ -300,7 +319,7 @@ proj="M?"
 with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     sharey=False,
     sharex=False,):
-    energy_cmap=pygmt.makecpt(cmap="bilbao", series=[0.2, 1, 0.01])
+    energy_cmap=pygmt.makecpt(cmap="bilbao", series=[0.5, 1, 0.01])
     df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
     grd = pygmt.xyz2grd(data=df, region=region, spacing=spacing)
     fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, frame=["af", "WSne"],\
@@ -311,7 +330,7 @@ with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     #fig.plot(x=aftershock[:,1],y=aftershock[:,0],size=aftershock[:,3]/20,style='cc',fill = 'red',pen='black',)
     #fig.plot(x=aftershock['longitude'],y=aftershock['latitude'],projection=proj,region=region,size=aftershock['mag']/50,style='cc',fill = 'red',pen='black',transparency=60)
     try:
-        fig.plot(x=aftershock_melgar['lon'],y=aftershock_melgar['lat'],size=aftershock_melgar['mag']/50,style='cc',fill = 'blue',pen='black',transparency=60)
+        fig.plot(x=aftershocks['Lon'],y=aftershocks['Lat'],size=aftershocks['Mag']/50,style='cc',fill = 'black',pen='black')#,transparency=0)
     except:
         pass
     fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,latitude=event_lat,depth=event_depth,transparency=40,)
@@ -350,7 +369,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
 
     peak_cmap=pygmt.makecpt(cmap="bilbao", series=[0, STF_end,  (STF_end-STF_start)/15])
     fig.basemap(
-        region=[STF_start, STF_end,0, np.max(dist_rupture[STF_start:STF_end]) ], projection="X?", frame=["x+lTime (s)", "y+lDistance (km)"], panel=[1, 0]
+        region=[STF_start, STF_end,0, np.max(dist_rupture2[STF_start:STF_end]) ], projection="X?", frame=["x+lTime (s)", "y+lDistance (km)"], panel=[1, 0]
     )
     dist_x=2.5*peak_energy[STF_start:STF_end,0]
     fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,green',label='2.5 km/s')
@@ -359,30 +378,42 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     dist_x=4.5*peak_energy[STF_start:STF_end,0]
     fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,red',label='4.5 km/s')
     fig.legend(position="jBR+o0.0c", box=False)
-    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'orange',pen='black',
+    fig.plot(y=dist_rupture2,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'orange',pen='black',
             transparency=40,)
-    #fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'blue',pen='black',
-    #        transparency=40,)
+    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'blue',pen='black',
+            transparency=40,)
 
 #########################################################################################################################################
 # Plotting Traces
 #########################################################################################################################################
 
-    fig.basemap(region=[0, stack_end, -1, len(stream_for_bp)], projection="X?", \
+    fig.basemap(region=[0, STF_end+10, -1, len(stream_for_bp)], projection="X?", \
                 frame=["x+lTime (s)", "y+lTrace"], panel=[0, 1],)
     count=0
     for tr in stream_for_plot:
         count=count+1
-        #t_corr = tr.stats['P_arrival'] + tr.stats.Corr_shift
-        #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
-        #tr.detrend("linear")
+        if tr.stats.station == ref_trace.stats.station:
+            #arrival=source[i][3]+tr[0].stats.Corr_shift
+            tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+            tr.trim(tr.stats['P_arrival']+tr.stats['Corr_shift']-10,tr.stats['P_arrival']+tr.stats['Corr_shift']+STF_end)
+            tr.normalize()
+            cut = tr.data #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
+            cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
+            cut=cut/np.max(cut) + count
+            time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
+            fig.plot(x=time,y=cut, pen='red',)
+        else:
 
-        tr.normalize()
-        cut = tr.data #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
-        cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
-        cut=cut/np.max(cut) + count
-        time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
-        fig.plot(x=time,y=cut, pen='black',)
+            #t_corr = tr.stats['P_arrival'] + tr.stats.Corr_shift
+            tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+            #tr.detrend("linear")
+            tr.trim(tr.stats['P_arrival']+tr.stats['Corr_shift']-10,tr.stats['P_arrival']+tr.stats['Corr_shift']+STF_end)
+            tr.normalize()
+            cut = tr.data #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
+            cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
+            cut=cut/np.max(cut) + count
+            time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
+            fig.plot(x=time,y=cut, pen='black',)
     
 #########################################################################################################################################
 # Plotting Stations
@@ -394,10 +425,10 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     # Plot the land as light gray, and the water as sky blue
     #fig.coast(shorelines=True)
     fig.coast(land="#666666", water="skyblue",)
-    fig.meca(spec=Focal_mech,scale="0.4c",longitude=event_long,latitude=event_long,depth=event_depth)
+    fig.meca(spec=Focal_mech,scale="0.4c",longitude=event_long,latitude=event_lat,depth=event_depth)
     fig.plot(x=sta_long,y=sta_lat,style='t0.2',fill = 'red',pen='black',)
     fig.plot(x=sta_long[Ref_station_index],y=sta_lat[Ref_station_index],\
              style= 't0.2',fill = 'blue',pen='black',)
 fig.show()
-fig.savefig(outdir+'/'+'T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_T'+str(smooth_time_window)+'_Space'+str(space_window)+'.png',dpi=300)
+fig.savefig(outdir+'/'+'T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'.png',dpi=300)
 #fig.savefig(outdir+'/'+'T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.eps',dpi=300)

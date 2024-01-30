@@ -8,6 +8,7 @@ from scipy import signal
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+import multiprocessing as mp
 import time
 ########### 
 import bp_lib
@@ -167,8 +168,8 @@ print('Now making the beam...')
 ##########################################################################
 # Make beam
 beam_info_reshaped=beam_info.reshape(len(slat),len(stream_for_bp),4)
+'''
 beam=[] #obspy.Stream()
-
 for j in range(len(beam_info_reshaped)):
     source = beam_info_reshaped[j]
     stream_source=stream_for_bp.copy()
@@ -176,22 +177,22 @@ for j in range(len(beam_info_reshaped)):
         tr = stream_source.select(station=source[i][2])
         arrival=source[i][3]+tr[0].stats.Corr_shift
         tr.trim(arrival-stack_start,arrival+stack_end)
+        tr.detrend('linear')
         tr.normalize()
-        #tr.detrend('linear')
     stream_use=stream_source.copy()
     #stack=stream_use.stack('linear')
     stack=[]
     for tr in stream_use:
-        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
-        #tr.detrend("linear")
-        cut = tr.data * tr.stats.Corr_coeff/tr.stats.Station_weight
+        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
+        tr.detrend("linear")
+        cut = tr.data * tr.stats.Corr_coeff #/tr.stats.Station_weight
         #tr.normalize()
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
     #print(np.shape(stack))
     #stack_reshaped = np.array(stack).reshape((len(stream_for_bp), -1))
     #beam.append(np.sum(stack_reshaped,axis=0))
     beam.append(np.sum(stack,axis=0))
-    print("Progress =",((j/len(beam_info_reshaped))*100),"%" )
+    #print("Progress =",((j/len(beam_info_reshaped))*100),"%" )
 #do some stuff
 print('Done making the beam.')
 print('Total time taken:',time.process_time() - time_start)
@@ -227,7 +228,7 @@ if __name__ == '__main__':
         results = pool.map(process_beam, range(len(beam_info_reshaped)))
         beam = [r for r in results]
     print('Total time taken:',time.process_time() - time_start)
-    file_save='beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
+    file_save='beam_test_pool'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
     np.savetxt(outdir+'/'+file_save,beam)
-'''
+
 

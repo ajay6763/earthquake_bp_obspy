@@ -18,34 +18,70 @@ import matplotlib.transforms as mtransforms
 ########### 
 #import bp lib
 import bp_lib as bp_lib
-
-
-
-###########################
+array_list=sys.arg(1)
+ref_array=array_list[0]
+outdir = './combined' #str(Event)+'_'+str(Exp_name)
+path = os.getcwd()
+scale=5
+peak_scale=8
+input = pd.read_csv('./'+ref_array+'/input.csv',header=None)
+a=input.to_dict('series')
+keys = a[0][:]
+values = a[1][:]
+res = {}
+for i in range(len(keys)):
+        res[keys[i]] = values[i]
+        #print(keys[i],values[i])
+#################################################################
+# bp info
+## BP parameters from the input file
+try:
+    bp_l = sys.argv[2]
+    bp_u = sys.argv[3]
+    print('bp_l and bp_u is,',(bp_l,bp_u))
+except:
+    bp_l                = float(res['bp_l']) #Hz
+    bp_u                = float(res['bp_u'])   #Hz
+#bp_l                = float(res['bp_l']) #Hz
+#bp_u                = float(res['bp_u'])   #Hz
+smooth_time_window  = int(res['smooth_time_window'])   #seconds
+smooth_space_window = int(res['smooth_space_window'])
+stack_start         = int(res['stack_start'])   #in seconds
+stack_end           = int(res['stack_end'])  #in seconds
+STF_start           = int(res['STF_start'])
+STF_end             = int(res['STF_end'])
+sps                 = int(res['sps'])  #samples per seconds
+threshold_correlation=float(res['threshold_correlation'])
+SNR=float(res['SNR'])
+smooth_time_window=10
+smooth_space_window=1
+STF_start=0
+STF_end=40
+#stack_start=30
+stack_end=70
+#bp_l=0.8
+#bp_u=5
+##########################################################################
 # Event info
-###########################
-origin_time      = obspy.UTCDateTime(2016, 1, 3, 23, 5, 22)
-event_lat        = 24.80360
-event_long       = 93.65050
-event_depth      = 55.0 # km
-###########################
-# data info
-###########################
-##########################
-# BP parameters
-##########################
-sps                 = 20  #samples per seconds
-bp_l                = 0.2 #Hz
-bp_u                = 5   #Hz
-stack_start         = 0   #in seconds
-stack_end           = 50  #in seconds
-smooth_time_window  = 2   #seconds
-source_grid_size    = 0.1 #degrees
-source_grid_extend  = 2   #degrees
-###############################
-# Making potential sources grid
-###############################
-slong,slat=bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
+Event=res['Event']
+event_lat=float(res['event_lat'])
+event_long=float(res['event_long'])
+event_depth=float(res['event_depth'])
+#Array_name=res['Array_name']
+#Exp_name=res['Exp_name']
+origin_time=obspy.UTCDateTime(int(res['origin_year']),int(res['origin_month']),
+             int(res['origin_day']),int(res['origin_hour']),int(res['origin_minute']),float(res['origin_seconds']))
+print(origin_time)
+Focal_mech = dict(strike=float(res['event_strike']), dip=float(res['event_dip']), rake=float(res['event_rake'])
+                 , magnitude=float(res['event_magnitude']))
+model               = TauPyModel(model=str(res['model']))
+sps                 = int(res['sps'])  #samples per seconds
+source_grid_size    = float(res['source_grid_size']) #degrees
+source_grid_extend  = float(res['source_grid_extend'])   #degrees
+source_depth_size   = float(res['source_depth_size']) #km
+source_depth_extend = float(res['source_grid_extend']) #km
+#stream_for_bp=obspy.read('./Turky_7.6_all/stream.mseed')
+slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
 ##############################
 # Finding index of the hypocentral grid
 dist=[]
