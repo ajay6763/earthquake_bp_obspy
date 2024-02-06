@@ -1,24 +1,16 @@
+from __future__ import division
 import sys,os
 import obspy
 from obspy.taup import TauPyModel
 from obspy.geodetics import locations2degrees
 from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.trigger import recursive_sta_lta_py
-from scipy import signal
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import time
+import bp_lib as bp_lib
 ########### 
-import bp_lib
-import math
-def moving_average(x, w):
-    """
-    Computes the moving average of a 2D numpy array x with a window size of w.
-    """
-    return np.convolve(x, np.ones(w), 'same') / w
-
-time_start = time.process_time()
+time_start = time.time()
 try:
     name = sys.argv[1]
     print('Input experiment is :',(name))
@@ -35,19 +27,6 @@ values = a[1][:]
 res = {}
 for i in range(len(keys)):
         res[keys[i]] = values[i]
-        #print(keys[i],values[i])
-##########################################################################
-'''
-bp_l=0.4
-bp_u=8
-smooth_time_window=10
-smooth_space_window=1
-peak_scale=10
-stack_start=30
-stack_end=200
-STF_start=0
-STF_end=150
-'''
 ## BP parameters from the input file
 try:
     bp_l = float(sys.argv[2])
@@ -56,7 +35,6 @@ try:
 except:
     bp_l                = float(res['bp_l']) #Hz
     bp_u                = float(res['bp_u'])   #Hz
-
 smooth_time_window  = int(res['smooth_time_window'])   #seconds
 smooth_space_window = int(res['smooth_space_window'])
 stack_start         = int(res['stack_start'])   #in seconds
@@ -66,8 +44,6 @@ STF_end             = int(res['STF_end'])
 sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
-#bp_l=0.8
-#bp_u=5
 # Event info
 Event=res['Event']
 event_lat=float(res['event_lat'])
@@ -77,9 +53,6 @@ Array_name=res['Array_name']
 #Exp_name=res['Exp_name']
 azimuth_min=float(res['azimuth_min'])
 azimuth_max=float(res['azimuth_max'])
-backazimuth_min=float(res['backazimuth_min'])
-backazimuth_max=float(res['backazimuth_max'])
-
 dist_min=float(res['dist_min'])
 dist_max=float(res['dist_max'])
 origin_time=obspy.UTCDateTime(int(res['origin_year']),int(res['origin_month']),
@@ -91,17 +64,11 @@ model               = TauPyModel(model=str(res['model']))
 sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
-#smooth_time_window  = int((stack_end-stack_start)/10) #int(res['smooth_time_window'])   #seconds
 source_grid_size    = float(res['source_grid_size']) #degrees
 source_grid_extend  = float(res['source_grid_extend'])   #degrees
 source_depth_size   = float(res['source_depth_size']) #km
 source_depth_extend = float(res['source_grid_extend']) #km
-
-#stream_for_bp=obspy.read('./Turky_7.6_all/stream.mseed')
 slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
-
-
-
 stations_file = str(res['stations'])
 stream_for_bp= obspy.read('./'+name+'/stream.mseed') 
 beam_info = np.load('./'+name+'/beam_info.npy',allow_pickle=True)
@@ -112,17 +79,17 @@ print('Origin time:',origin_time)
 print('Long= %f Lat= %f Depth= %f' % (event_long,event_lat,event_depth))
 print('bp_low= %f bp_high= %f Correlation threshold= %f SNR= %f'% (bp_l,bp_u,threshold_correlation,SNR))
 print('#############################################################################\n')
-
 print('Done loading data.')
 print('Total time taken:',time.process_time() - time_start)
 print('Now gathering stream information..')
+stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
+'''
 sta_name=list(stream_info[:,1])
 for t in stream_for_bp:
         if len(t.stats['station'].split('.')) > 1:
             sta          = t.stats.station+str('H')
         else:
             sta          = t.stats.station
-        #net 
         if sta in sta_name:
             ind                          = sta_name.index(sta)
             t.stats['origin_time']       = origin_time
@@ -134,41 +101,27 @@ for t in stream_for_bp:
             arr                          = arrivals[0]
             t_travel                     = arr.time;
             t.stats['P_arrival']         = origin_time + t_travel +  timedelta(hours=9)
-        
-            #t.stats['P_arrival']         = float(stream_info[ind,6]) 
             t.stats['Corr_coeff']        = float(stream_info[ind,7])
             t.stats['Corr_shift']        = float(stream_info[ind,8])
             t.stats['Corr_sign']         = float(stream_info[ind,9])
-            #t.stats['Backazimuth']         = float(stream_info[ind,10])
-
         else:
             pass
-            #print('Something is not right.')
-
-
+'''
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
 print('Done gathering stream information.')
-print('Total time taken:',time.process_time() - time_start)
-print('Now computing station weight..')
-for tr in stream_for_bp:
-    count=0;
-    for tr_ in stream_for_bp:
-        dist=((tr.stats.station_latitude-tr_.stats.station_latitude)**2 + 
-              (tr.stats.station_longitude-tr_.stats.station_longitude)**2 )**0.2;
-        if ( dist <= 1):
-            count=count+1;
-        else:
-            continue
-    tr.stats['Station_weight'] = count
+print("Time taken: {:.1f} min".format((time.time()-time_start)/60.0))
+print('Computing computing station weight.')
+stream_for_bp=bp_lib.stream_station_weight(stream_for_bp)
 print('Done computing station weight.')
-print('Total time taken:',time.process_time() - time_start)
+print("Time taken: {:.1f} min".format((time.time()-time_start)/60.0))
 print('Now making the beam...')
 ##########################################################################
 # Make beam
 beam_info_reshaped=beam_info.reshape(len(slat),len(stream_for_bp),4)
-beam=[] #obspy.Stream()
-
+print('beam_info',np.shape(beam_info))
+print('beam_info_reshaped',np.shape(beam_info_reshaped))
+beam=[] 
 for j in range(len(beam_info_reshaped)):
     source = beam_info_reshaped[j]
     stream_source=stream_for_bp.copy()
@@ -176,29 +129,21 @@ for j in range(len(beam_info_reshaped)):
         tr = stream_source.select(station=source[i][2])
         arrival=source[i][3]+tr[0].stats.Corr_shift
         tr.trim(arrival-stack_start,arrival+stack_end)
-        tr.normalize()
-        #tr.detrend('linear')
     stream_use=stream_source.copy()
-    #stack=stream_use.stack('linear')
     stack=[]
     for tr in stream_use:
         tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
-        #tr.detrend("linear")
         cut = tr.data * tr.stats.Corr_coeff/tr.stats.Station_weight
-        #tr.normalize()
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
-    #print(np.shape(stack))
-    #stack_reshaped = np.array(stack).reshape((len(stream_for_bp), -1))
-    #beam.append(np.sum(stack_reshaped,axis=0))
     beam.append(np.sum(stack,axis=0))
-    print("Progress =",((j/len(beam_info_reshaped))*100),"%" )
-#do some stuff
+    bp_lib.progressbar(j)
 print('Done making the beam.')
-print('Total time taken:',time.process_time() - time_start)
+print("Time taken: {:.1f} min".format((time.time()-time_start)/60.0))
 print('Saving the beam.')
 file_save='beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
 np.savetxt(outdir+'/'+file_save,beam)
-print('Total time taken:',time.process_time() - time_start)
+print("Total execution time: {:.1f} min".format((time.time()-time_start)/60.0))
+
 '''
 def process_beam(j):
     source = beam_info_reshaped[j]
