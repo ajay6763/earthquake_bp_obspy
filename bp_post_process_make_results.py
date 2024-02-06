@@ -87,12 +87,12 @@ SNR=float(res['SNR'])
 smooth_time_window=5
 smooth_space_window=5
 #smooth_time_window  = int((stack_end-stack_start)/10) #int(res['smooth_time_window'])   #seconds
-STF_start=0
-STF_end=40
-stack_start=25
-stack_end=stack_start+STF_end
-#bp_l=0.8
-#bp_u=5
+#STF_start=0
+#STF_end=40
+#stack_start=25
+#stack_end=stack_start+STF_end
+#bp_l=0.5
+#bp_u=1.0
 ##########################################################################
 # Event info
 Event=res['Event']
