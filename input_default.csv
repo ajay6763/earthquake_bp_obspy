@@ -35,7 +35,7 @@ STF_start,0
 STF_end,100
 smooth_time_window,10
 smooth_space_window,2
-source_grid_size,0.1
+source_grid_size,0.15
 source_grid_extend,2
 source_depth_size,5
 source_depth_extend,30

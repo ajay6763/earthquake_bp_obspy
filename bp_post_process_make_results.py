@@ -84,8 +84,8 @@ STF_end             = int(res['STF_end'])
 sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
-smooth_time_window=5
-smooth_space_window=5
+#smooth_time_window=5
+#smooth_space_window=5
 #smooth_time_window  = int((stack_end-stack_start)/10) #int(res['smooth_time_window'])   #seconds
 #STF_start=0
 #STF_end=40
@@ -294,6 +294,8 @@ try:
     #faults = geopd.read_file('./data/Turkey_Emergency_EQ_Data/Turkey_Emergency_EQ_Data/simple_fault_2023-03-15/simple_fault_2023-3-15.shp')
 except:
     pass
+
+#source_grid_extend=1
 
 region=[event_long-source_grid_extend,event_long+source_grid_extend,event_lat-source_grid_extend,event_lat+source_grid_extend]
 

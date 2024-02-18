@@ -19,13 +19,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 ########### 
 import bp_lib as bp_lib
+if len(sys.argv)>2:
+     pass
+else:
+    print('You did not provide required input.\n')
+    print('You need to provide more than one array where first input is the reference.\n')
+    exit()
 color_list=['red','blue','green','magenta','cyan','yellow','black','white']
 corr_window=10 # seconds
 scale=5 #
 peak_scale=8
 array_list = []
-for arg in sys.argv:
-      array_list.append(arg)
+for i in range(len(sys.argv)-1):
+      array_list.append(sys.argv[i+1])
+ref_array=array_list[0]
+print('Reference array is :',ref_array)
 '''
 if len(array_list)>2:
      pass
@@ -37,8 +45,7 @@ else:
     print('You can also provide the frequency by adding')
     exit()
 '''
-ref_array=array_list[1]
-print('Reference array is :',ref_array)
+
 outdir ='./combined' #str(Event)+'_'+str(Exp_name)
 path = os.getcwd()
 isExist = os.path.exists(outdir)
@@ -137,6 +144,7 @@ p=len(array_list)
 beam_all = np.zeros((p,m,n),dtype=float)
 beam_all[0]=ref_array_beam
 hypo_stack=np.zeros((p,len(beam_all[0][hypocentre_index][:])))
+print('loading other arrays')
 for i in range(len(array_list)-1):
     input = pd.read_csv('./'+array_list[i+1]+'/input.csv',header=None)
     a=input.to_dict('series');keys = a[0][:];values = a[1][:]
@@ -177,7 +185,7 @@ print('Shifted beam shape:',np.shape(beam_all))
 print('Shifted beam shape:',np.shape(beam_all[0]))
 print('Shifted beam shape:',np.shape(beam_all[0][shift[0]:shift[0]+int((end-st))][:]))
 print(np.shape(slat))    
-for i in range(len(array_list)-1):
+for i in range(len(array_list)):
      print('shif is:',shift[i])
      print('length is:',end-st)
      beam_all_shifted[i,:]=beam_all[i,:,shift[i]+st:shift[i]+int((end))]*corr[i]
@@ -185,8 +193,13 @@ for i in range(len(array_list)-1):
 # Smoothening the beam
 #beam_use=np.zeros((len(slat),(stack_end-stack_start)*sps-1))
 beam_sum = np.sum(beam_all_shifted,axis=0)
-stack_start=0 # stack start is at 0 because individaul arrays are already shited based on stack_start
-stack_end=40
+print(np.shape(beam_all_shifted))
+print(np.shape(beam_sum))
+np.array_equal(beam_sum,beam_all_shifted[0])
+np.array_equal(beam_all_shifted[1],beam_all_shifted[0])
+
+stack_end=STF_end
+stack_start=STF_start # stack start is at 0 because individaul arrays are already shited based on stack_start
 beam_use=np.zeros_like(beam_sum)
 #count=0
 for i in range(len(slat)):
@@ -283,7 +296,9 @@ try:
     #faults = geopd.read_file('./data/Turkey_Emergency_EQ_Data/Turkey_Emergency_EQ_Data/simple_fault_2023-03-15/simple_fault_2023-3-15.shp')
 except:
     pass
+#source_grid_extend=1
 region=[event_long-source_grid_extend,event_long+source_grid_extend,event_lat-source_grid_extend,event_lat+source_grid_extend]
+
 #region=[35.5,39,36,39]
 #region=[35.5,39.5,36,38.5]
 title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)
@@ -376,10 +391,10 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     #frame=["xa45f", "+gbisque+tprojection='P5c' @^ region=[0, 360, 0, 1]"],
     )
     # looping through the arrays info
-    for i in range(len(array_list)-1):
+    for i in range(len(array_list)):
         # reading array info
-        stream_info = np.load('./'+array_list[i+1]+'/array_bp_info.npy',allow_pickle=True)
-        stream_for_bp=obspy.read('./'+array_list[i+1]+'/stream.mseed') 
+        stream_info = np.load('./'+array_list[i]+'/array_bp_info.npy',allow_pickle=True)
+        stream_for_bp=obspy.read('./'+array_list[i]+'/stream.mseed') 
         stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info
                                           ,origin_time,event_depth,model)
         Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
@@ -421,9 +436,9 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     fig.coast(land="#666666", water="skyblue",)
     fig.meca(spec=Focal_mech,scale="0.4c",longitude=event_long,latitude=event_lat,depth=event_depth)
     # looping through the arrays info
-    for i in range(len(array_list)-1):
+    for i in range(len(array_list)):
         # reading array info
-        stream_info = np.load('./'+array_list[i+1]+'/array_bp_info.npy',allow_pickle=True)
+        stream_info = np.load('./'+array_list[i]+'/array_bp_info.npy',allow_pickle=True)
         stn_lat=stream_info[:,3].tolist()
         stn_long=stream_info[:,2].tolist()
         Ref_station_index=bp_lib.get_ref_station_frm_list(stn_long,stn_lat)
