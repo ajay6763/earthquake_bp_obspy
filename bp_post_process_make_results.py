@@ -1,18 +1,10 @@
 import sys,os
 import obspy
 from obspy.taup import TauPyModel
-from obspy.geodetics import locations2degrees
-from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.trigger import recursive_sta_lta_py
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation
-import matplotlib.transforms as mtransforms
 import pygmt
-import csv
 import pandas as pd
-import geopandas as gpd
-from datetime import datetime, timedelta
 import time
 
 ########### 
@@ -217,7 +209,7 @@ print('Size of STF:', np.shape(stf_beam))
 
 stf_beam=np.column_stack((stf_beam,range(len(stf_beam))))
 stf_beam[:,1]=stf_beam[:,1]/sps
-plt.plot(stf_beam[:,1],stf_beam[:,0])
+#plt.plot(stf_beam[:,1],stf_beam[:,0])
 file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,stf_beam,header='energy(normalized) time(s) ')  
 
@@ -267,19 +259,19 @@ peak_energy=np.column_stack((peak_energy,dist_rupture2))
 
 file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
-plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
-plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
-plt.title(str(name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window))
-plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
-plt.plot(4.5*peak_energy[:,0],peak_energy[:,0],label='4.5 km/s')
-plt.plot(4*peak_energy[:,0],peak_energy[:,0],label='4 km/s')
-plt.plot(2*peak_energy[:,0],peak_energy[:,0],label='2.5 km/s')
+#plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
+#plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
+#plt.title(str(name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window))
+#plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,0])
+#plt.plot(4.5*peak_energy[:,0],peak_energy[:,0],label='4.5 km/s')
+#plt.plot(4*peak_energy[:,0],peak_energy[:,0],label='4 km/s')
+#plt.plot(2*peak_energy[:,0],peak_energy[:,0],label='2.5 km/s')
 #plt.plot(1*peak_energy[st:end,0],peak_energy[st:end,0],label='1.0 km/s')
-plt.xlabel('Distance (km)')
-plt.ylabel('Time (s)')
-plt.legend()
-plt.colorbar()
-plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
+#plt.xlabel('Distance (km)')
+#plt.ylabel('Time (s)')
+#plt.legend()
+#plt.colorbar()
+#plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
 
 
 

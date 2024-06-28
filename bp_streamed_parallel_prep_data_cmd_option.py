@@ -5,9 +5,6 @@ from __future__ import division
 import sys,os,time, getopt
 import obspy
 from obspy.taup import TauPyModel
-from obspy.geodetics import locations2degrees
-from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.trigger import recursive_sta_lta_py
 import numpy as np
 import csv
 import pandas as pd
