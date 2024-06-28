@@ -4,7 +4,6 @@ from obspy.taup import TauPyModel
 from obspy.geodetics import locations2degrees
 from obspy.geodetics.base import gps2dist_azimuth
 from obspy.signal.trigger import recursive_sta_lta_py
-from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
@@ -15,7 +14,6 @@ import pandas as pd
 import geopandas as gpd
 from datetime import datetime, timedelta
 import time
-import multiprocessing as mp
 
 ########### 
 import bp_lib
@@ -86,14 +84,15 @@ STF_end             = int(res['STF_end'])
 sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
-smooth_time_window=5
-smooth_space_window=5
-STF_start=0
-STF_end=40
-stack_start=30
-stack_end=70
-#bp_l=0.8
-#bp_u=5
+#smooth_time_window=5
+#smooth_space_window=5
+#smooth_time_window  = int((stack_end-stack_start)/10) #int(res['smooth_time_window'])   #seconds
+#STF_start=0
+#STF_end=40
+#stack_start=25
+#stack_end=stack_start+STF_end
+#bp_l=0.5
+#bp_u=1.0
 ##########################################################################
 # Event info
 Event=res['Event']
@@ -139,8 +138,6 @@ print('Origin time:',origin_time)
 print('Long= %f Lat= %f Depth= %f' % (event_long,event_lat,event_depth))
 #print('bp_low= %f bp_high= %f Correlation threshold= %f SNR= %f'% (bp_l,bp_u,threshold_correlation,SNR))
 print('#############################################################################\n')
-
-
 sta_name=list(stream_info[:,1])
 for t in stream_for_bp:
         if len(t.stats['station'].split('.')) > 1:
@@ -192,13 +189,13 @@ print('Done loading data')
 # Smoothening the beam
 #beam_use=np.zeros((len(slat),(stack_end-stack_start)*sps-1))
 beam_use=np.zeros_like(beam)
-count=0
+#count=0
 for i in range(len(slat)):
     #env = obspy.signal.filter.envelope(tr.data)
     #env_reshaped=np.array(env).reshape((len(stream_for_bp),-1))
     #amp=tr.data[0:(stack_end-stack_start)*sps]
     beam_use[i,:]= beam[i]**2 #np.power(tr.data[0:(stack_end-stack_start)*sps],2)
-    count=count+1
+    #count=count+1
 beam_reshaped=beam_use
 beam_smoothened = np.zeros_like(beam_reshaped)
 m,n=np.shape(beam_smoothened)
@@ -298,7 +295,8 @@ try:
 except:
     pass
 
-source_grid_extend=1 #source_grid_extend/2
+#source_grid_extend=1
+
 region=[event_long-source_grid_extend,event_long+source_grid_extend,event_lat-source_grid_extend,event_lat+source_grid_extend]
 
 #region=[35.5,39,36,39]
@@ -396,7 +394,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
             #arrival=source[i][3]+tr[0].stats.Corr_shift
             tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
             tr.trim(tr.stats['P_arrival']+tr.stats['Corr_shift']-10,tr.stats['P_arrival']+tr.stats['Corr_shift']+STF_end)
-            tr.normalize()
+            #tr.normalize()
             cut = tr.data #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
             cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
             cut=cut/np.max(cut) + count
@@ -408,7 +406,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
             tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
             #tr.detrend("linear")
             tr.trim(tr.stats['P_arrival']+tr.stats['Corr_shift']-10,tr.stats['P_arrival']+tr.stats['Corr_shift']+STF_end)
-            tr.normalize()
+            #tr.normalize()
             cut = tr.data #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
             cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
             cut=cut/np.max(cut) + count

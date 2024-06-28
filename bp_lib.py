@@ -16,7 +16,9 @@ from bisect import bisect_left
 from copy import copy
 import warnings
 from obspy.signal.invsim import cosine_taper
+import obspy
 import numpy as np
+import pandas as pd
 import math
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
@@ -25,6 +27,16 @@ from mpl_toolkits.basemap import Basemap
 from obspy.imaging.beachball import beach
 import numpy as np
 ########### 
+def calculate_shear_mach_front_angle(super_shear_velocity):
+    # Calculate the shear Mach front angle using the super-shear velocity
+    sin_shear_mach_front_angle = 1 / super_shear_velocity
+    shear_mach_front_angle = math.degrees(math.asin(sin_shear_mach_front_angle))
+    return shear_mach_front_angle
+def moving_average(x, w):
+    """
+    Computes the moving average of a 2D numpy array x with a window size of w.
+    """
+    return np.convolve(x, np.ones(w), 'same') / w
 def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
     count = len(it)
     def show(j):
@@ -36,6 +48,89 @@ def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
         yield item
         show(i+1)
     print("\n", flush=True, file=out)
+def populate_stream_info(stream,stream_info,origin_time,event_depth,model):
+    '''
+    This function write the array stream info from the stream info file.
+    This is used when loadin the array stream for processing (making beam), plotting
+    input:
+    stream: obspy stream (array stream after the data prepration stage)
+    stream_info: numpy binay file generated in the data prepration stage for the array:array_bp_info
+    origin_time: origin time of the event (obspy format)
+    event_depth: depth of the event (km)
+    '''
+    sta_name=list(stream_info[:,1])
+    for t in stream:
+        if len(t.stats['station'].split('.')) > 1:
+            sta          = t.stats.station+str('H')
+        else:
+            sta          = t.stats.station
+        #net 
+        if sta in sta_name:
+            ind                          = sta_name.index(sta)
+            t.stats['origin_time']       = origin_time
+            t.stats['station_longitude'] = float(stream_info[ind,2])
+            t.stats['station_latitude']  = float(stream_info[ind,3])
+            t.stats['Dist']              = float(stream_info[ind,4])
+            t.stats['Azimuth']           = float(stream_info[ind,5])
+            arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=t.stats.Dist,phase_list=["P"])
+            arr                          = arrivals[0]
+            t_travel                     = arr.time
+            t.stats['P_arrival']         = origin_time + t_travel 
+        
+            #t.stats['P_arrival']         = float(stream_info[ind,6]) 
+            t.stats['Corr_coeff']        = float(stream_info[ind,7])
+            t.stats['Corr_shift']        = float(stream_info[ind,8])
+            t.stats['Corr_sign']         = float(stream_info[ind,9])
+        else:
+            pass
+            #print('Something is not right.')
+    return stream
+def stream_info_populate(stream,stations,origin_time,event_depth,model):
+    '''
+    This function write the header info into the stream 
+    Input:
+    stream: obspy stream (array stream after the data prepration stage)
+    station_info: numpy binay file generated in the data prepration stage for the array:array_bp_info
+    origin_time: origin time of the event (obspy format)
+    event_depth: depth of the event (km)
+    '''
+    sta_net=[];sta_name=[];sta_lat=[];sta_long=[];sta_dist=[];sta_azimuth=[];sta_P_arrival_taup=[]
+    stations = pd.read_csv(stations, sep='|')
+    sta_net             = list(stations['Net'])
+    sta_name            = list(stations['Station'])
+    sta_lat             = list(stations['Latitude'])
+    sta_long            = list(stations['Longitude'])
+    sta_dist            = list(stations['Distance'])
+    sta_azimuth         = list(stations['Azimuth'])
+    print('Total number of stations:', len(sta_lat))
+    ##########################################################################
+    # Looping through the network traces and writing 
+    # station latitude and station longitude 
+    sta_sps=[]
+    for t in stream:
+            sta          = t.stats.station
+            #net 
+            if sta in sta_name:
+                ind                          = sta_name.index(sta)
+                t.stats['Dist']              = sta_dist[ind]
+                t.stats['Azimuth']           = sta_azimuth[ind]
+                ## look for documentation of gps2dist_azimuth
+                #baz = gps2dist_azimuth(event_lat, event_long, sta_lat[ind], sta_long[ind])
+                #t.stats['Backazimuth']       =  baz[2]
+                t.stats['station_latitude']  = sta_lat[ind]
+                t.stats['station_longitude'] = sta_long[ind]
+                t.stats['origin_time']       = origin_time
+                #arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=locations2degrees(event_lat,event_long,sta_lat[ind],sta_long[ind]),phase_list=["P"])
+                arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,\
+                                                                      distance_in_degree=t.stats.Dist,phase_list=["P"])
+                arr                          = arrivals[0]
+                t_travel                     = arr.time;
+                t.stats['P_arrival']         = origin_time + t_travel 
+                sta_sps.append(t.stats.sampling_rate)
+            else:
+                stream.remove(t)
+    print("Total no stations with data:", len(stream))
+    return stream
 def save_stream_info(stream_for_bp):
     sta = []
     sta_lat = []
@@ -71,6 +166,52 @@ def save_stream_info(stream_for_bp):
     #to_save = np.column_stack((to_save,backazimuth))
     #np.save('array_bp_info',to_save,allow_pickle=True)
     return to_save
+def stream_cut_P_arrival_normalize(stream,cut_start,cut_end):
+    '''
+    This function cuts the traces in a stream relative to P_arrival
+    with a window in seconds before and after and normalizes the amplitude.
+    It also checks if the trimed trace has expected lenght if not then the trace
+    is removed
+    
+    Input:
+    stream : obspy stream with P_arrivals
+    cut_start : cut before P arrival
+    cut_end :m cut after P arrival
+
+    Output:
+    stream : obspy stream
+    '''
+    print('Total no of traces before data gap checks:', len(stream))
+    for t in stream:
+        t.trim(t.stats['P_arrival']-cut_start,t.stats['P_arrival']+cut_end)
+        if t.stats.npts < (cut_start+cut_end)/t.stats.delta:
+            stream.remove(t)
+        else:
+            t.normalize()
+    return stream
+def stream_station_weight(stream,distance_thresh=1.0):
+    '''
+    This function computes stations weights in an array
+    by counting no of stations within distance_thresh.
+    
+    Input:
+    stream : obspy stream with station lat longs
+    distance_thresh : minimum distance for weigth in degrees
+ 
+    Output:
+    stream : obspy stream
+    '''
+    for tr in stream:
+        count=1;
+        for tr_ in stream:
+            dist=((tr.stats.station_latitude-tr_.stats.station_latitude)**2 + 
+                (tr.stats.station_longitude-tr_.stats.station_longitude)**2 )**0.2;
+            if ( dist < distance_thresh):
+                count=count+1;
+            else:
+                continue
+        tr.stats['Station_weight'] = count
+    return stream
 def nth_root_stacking(arr, n):
     """
     This function performs nth root stacking on a NumPy array
@@ -143,7 +284,6 @@ def event_plot(event_lat,event_long,sta_lat,sta_long,name):
     #fig.suptitle(str(code)+' age')
     plt.show()
     plt.savefig(name+'.png',dpi=450)
-
 def data_plot(stream,event_lat,event_long,outdir,outname):
     fig, ax = plt.subplots(1, 2, sharex=False, sharey=False,figsize=(10,3))
     #map =  Basemap(projection='cyl', lon_0=event_long,lat_0=event_lat,
@@ -178,9 +318,6 @@ def data_plot(stream,event_lat,event_long,outdir,outname):
     ## plot traces
     plt.show()
     fig.savefig(outdir+'/'+outname)
-
-
-
 def get_ref_station(stream):
     """
     This function outputs the index of reference station (~centroid) in an array
@@ -203,8 +340,22 @@ def get_ref_station(stream):
     dist=np.array(np.sqrt((x[:]-x_centroid)**2+(y[:]-y_centroid)**2));
     index=np.argmin(dist);
     return index
-
-
+def get_ref_station_frm_list(stn_longs,stn_lats):
+    """
+    This function outputs the index of reference station (~centroid) in an array
+    Input: list_of_longs,list_of_lats
+    Output: reference station index
+    """
+    x=np.asarray(stn_longs,dtype=float)
+    y=np.asarray(stn_lats,dtype=float)
+    n = len(x)
+    x_sum = np.sum(x)
+    y_sum = np.sum(y)
+    x_centroid = x_sum / n
+    y_centroid = y_sum / n
+    dist=np.array(np.sqrt((x[:]-x_centroid)**2+(y[:]-y_centroid)**2));
+    index=np.argmin(dist);
+    return index
 def get_ref_station_pev(stream,type,out_option):
     sta_dist=[]
     sta_azimuth=[]
@@ -232,8 +383,6 @@ def get_ref_station_pev(stream,type,out_option):
     else:
         Ref_station_index=index_azimuth
     return Ref_station_index
-
-
 def xcorr(x,y):
     """
     Perform Cross-Correlation on x and y
@@ -247,7 +396,6 @@ def xcorr(x,y):
     corr = signal.correlate(x, y, mode="full")
     lags = signal.correlation_lags(len(x), len(y), mode="full")
     return corr,lags
-
 def crosscorr_prev(t1_trace,t2_trace,window):
     '''
 
@@ -323,8 +471,7 @@ def crosscorr_stream(stream,ref_trace,window):
         #except:
         #    stream.remove(tr)
     return stream
-
-def crosscorr_stream_xcorr(stream,ref_trace,window,bp_l,bp_u):
+def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u):
     '''
     '''
     for tr in stream:
@@ -336,19 +483,49 @@ def crosscorr_stream_xcorr(stream,ref_trace,window,bp_l,bp_u):
         '''
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
-                t_before=window, t_after=window, cc_maxlag=window,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+                t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
             tr.stats['Corr_coeff'] = value
             tr.stats['Corr_shift']  = shift
             tr.stats['Corr_sign']  = 1.0
         except:
             print('Could not cross-correlate! Hence remove this waveform.')
-            #tr.stats['Corr_coeff'] = corr
-            #tr.stats['Corr_shift']  = shift
-            #tr.stats['Corr_sign']  = 1
             stream.remove(tr)
-
     return stream
+def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_before,time_after,max_lag,corr_thresh):
+    '''
+    This function cross-correlates traces around P arrival in an obspy stream with a reference trace.
+    It also removes traces that have correlation coefficient less an input threshold
+    Note: traces are not filtered before cross-correlation
 
+    Input:
+    stream : obspy stream
+    ref_trace : reference trace in the stream
+    time_before : time before P arrival i.e., corr window
+    time_after : time after P arrival,i.e., corr window
+    max_lag : maximum lag for cross-correlation 
+    corr_thresh : correlation value below which traces are removed.
+
+    '''
+    for tr in stream:
+        '''
+        shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr, t_before=5, t_after=10, cc_maxlag=5) #,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+        tr.stats['Corr_coeff'] = value
+        tr.stats['Corr_shift']  = shift
+        tr.stats['Corr_sign']  = 1
+        '''
+        try:
+            shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
+                t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+            if (abs(value) >= corr_thresh):
+                tr.stats['Corr_coeff'] = value
+                tr.stats['Corr_shift']  = shift
+                tr.stats['Corr_sign']  = 1.0
+            else:
+                stream.remove(tr)
+        except:
+            print('Could not cross-correlate! Hence remove this waveform.')
+            stream.remove(tr)
+    return stream
 def snr_calc(tr, noise_window, signal_window):
     """
     """
@@ -397,7 +574,6 @@ def snr_check(stream,SNR,t_before,t_after):
         except:
             stream.remove(t)
     return stream
-
 def xcorr_pick_correction(pick1, trace1, pick2, trace2, t_before, t_after,
                           cc_maxlag, filter=None, filter_options={}):
     """
@@ -563,7 +739,6 @@ def xcorr_pick_correction(pick1, trace1, pick2, trace2, t_before, t_after,
     dt = -dt
     pick2_corr = dt
     return (pick2_corr, coeff)
-
 def make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size):
     '''
     This function makes potential source grid around the epicentre in a area
@@ -581,7 +756,6 @@ def make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size):
             slong.append(x[i])
             slat.append(y[j])
     return slong,slat
-
 def make_source_grid_3D(event_long,event_lat,source_grid_extend,source_grid_size,depth_min,depth_max,depth_inc):
     '''
     This function makes potential source grid around the epicentre in a area
@@ -624,7 +798,6 @@ def check_sps(stream,sps):
         #        else:
         #            print("There are some traces that cannot be decimated 20 SPS. Please check the SPS of your data")
     return stream
-
 def check_distance(stream,min_distance,max_distance):
     '''
     This functions checks for distance (degrees) and only selecet waveforms
@@ -640,7 +813,6 @@ def check_distance(stream,min_distance,max_distance):
             stream_work.remove(t)
     #print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def check_distance_except(stream,min_distance,max_distance):
     '''
     This functions checks for distance (degrees) and only selecet waveforms
@@ -656,7 +828,6 @@ def check_distance_except(stream,min_distance,max_distance):
             pass
     #print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def check_azimuth(stream,min_azimuth,max_azimuth):
     '''
     This functions checks for distance (degrees) and only selecet waveforms
@@ -672,7 +843,6 @@ def check_azimuth(stream,min_azimuth,max_azimuth):
             stream_work.remove(t)
     #print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def check_baz(stream,min_baz,max_baz):
     '''
     This functions checks for distance (degrees) and only selecet waveforms
@@ -688,7 +858,6 @@ def check_baz(stream,min_baz,max_baz):
             stream_work.remove(t)
     #print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def STA_LTA(stream,nsta,nlta,Start_P_cut_time):
     '''
     '''
@@ -728,7 +897,6 @@ def select_except(stream,min_azimuth,max_azimuth,min_dist,max_dist):
             stream_work.remove(t)
     #print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def check_azimuth_except(stream,min_azimuth,max_azimuth):
     '''
     This functions checks for distance (degrees) and only selecet waveforms
@@ -744,7 +912,6 @@ def check_azimuth_except(stream,min_azimuth,max_azimuth):
             pass
     print('Total no of traces after :', len(stream_work))
     return stream_work
-
 def cut_window(trace,T,Start,End):
     '''
     '''
@@ -766,10 +933,8 @@ def cut_window(trace,T,Start,End):
     #    pass
 
     return cut,width,sign
-
 def moving_average_time(data, w):
     return np.convolve(data, np.ones(w), 'same') / w
-
 def plot_array(stream,event_long,event_lat,Array_name,Ref_station_index):
     '''
     '''
@@ -825,9 +990,7 @@ def plot_results(beam_plot,stf,event_long,event_lat,Array_name,slong,slat,stack_
     ax2[1].set_ylabel('Amplitude ')
     ax2[1].set_title('STF')
     fig2.savefig(str(Array_name)+'_BP_cumulative_STF.png', dpi=fig.dpi)
-
 def moving_average_time_beam(data):
     return np.sum(data[:,:],axis=1)
-
 def moving_average_space(data):
     return np.sum(data[:,:],axis=0)

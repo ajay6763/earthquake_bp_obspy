@@ -8,12 +8,7 @@ from obspy.taup import TauPyModel
 from obspy.geodetics import locations2degrees
 from obspy.geodetics.base import gps2dist_azimuth
 from obspy.signal.trigger import recursive_sta_lta_py
-from scipy import signal
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation
-import matplotlib.transforms as mtransforms
-#import pygmt
 import csv
 import pandas as pd
 import bp_lib
@@ -191,92 +186,16 @@ print('Total no of traces after decimation criteria:', len(stream_SPS))
 print('Total no of traces before  distance criteria:', len(stream_SPS))
 stream_SPS_dist = bp_lib.check_distance(stream_SPS,dist_min,dist_max)
 print('Total no of traces after distance criteria:', len(stream_SPS_dist))
-
 ######### azimuth
 print('Total no of traces before  azimuth criteria:', len(stream_SPS_dist))
 stream_SPS_dist_azimuth=stream_SPS_dist.copy()
 stream_SPS_dist_azimuth = bp_lib.check_azimuth(stream_SPS_dist_azimuth,azimuth_min,azimuth_max)
 print('Total no of traces after azimuth criteria:', len(stream_SPS_dist_azimuth))
-'''
-######### baz
-print('Total no of traces before  azimuth criteria:', len(stream_SPS_dist))
-stream_SPS_dist_azimuth=stream_SPS_dist.copy()
-stream_SPS_dist_azimuth = bp_lib.check_baz(stream_SPS_dist_azimuth,backazimuth_min,backazimuth_max)
-print('Total no of traces after backazimuth criteria:', len(stream_SPS_dist_azimuth))
-'''
-#############################
-# Except selection
-######### azimuth
-#print('Total no of traces before  azimuth criteria:', len(stream_SPS_dist))
-#stream_SPS_dist_azimuth = bp_lib.check_azimuth_except(stream_SPS_dist,azimuth_min,azimuth_max)
-#print('Total no of traces after azimuth criteria:', len(stream_SPS_dist_azimuth))
 
-######### SNR
-stream_SPS_dist_azimuth_SNR=stream_SPS_dist_azimuth.copy()
-print('Total no of traces before  SNR criteria:', len(stream_SPS_dist_azimuth_SNR))
-stream_SPS_dist_azimuth_SNR = bp_lib.snr_check(stream_SPS_dist_azimuth_SNR,SNR,snr_window,snr_window)
-print('Total no of traces after SNR criteria:', len(stream_SPS_dist_azimuth_SNR))
-
-## get the displacement
-#for tr in stream_SPS_dist_azimuth_SNR:
-#    tr.detrend("linear")
-#    tr.integrate()
-#    #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
-#    tr.detrend("linear")
-
-##########################################################################
-# finding reference station
-# the the station in the middle of the array
-# I will take the mean of the distance and azimuth and take the station closest to it
-##########################################################################
-stream_correlated=stream_SPS_dist_azimuth_SNR.copy()
-Ref_station_index=bp_lib.get_ref_station(stream_correlated)
-ref_trace = stream_SPS_dist_azimuth_SNR[Ref_station_index]
-print(Ref_station_index)
-print(ref_trace)
-print('Total no of traces before Cross-correlation:', len(stream_correlated))
-#print('Performning cross-correlation by bandpass filtering at bp_l = %f and bp_u = %f' %(bp_l,bp_u))
-print('Performning cross-correlation')
-stream_correlated=bp_lib.crosscorr_stream_xcorr(stream_correlated,ref_trace,corr_window,bp_l,bp_u)
-print('Total no of traces after Cross-correlation:', len(stream_correlated))
-##########################################################################
-# Selecting traces for BP. 
-# Use can choose correlation threshold
-# If not then simple set threshold to 0
-# and all the traces will be used for in
-# back-projection
-##########################################################################
-#stream_for_bp = stream_cut_filtered_correlated.copy()
-stream_for_bp_corr_thresh = stream_correlated.copy()
-print('No of traces before cross-correlation threshold = ', len(stream_for_bp_corr_thresh))
-for tr in stream_for_bp_corr_thresh:
-    if (abs(tr.stats.Corr_coeff) >= threshold_correlation):
-        #time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
-        #plt.plot(time,tr.data/np.max(tr.data))
-        pass
-    else:
-        stream_for_bp_corr_thresh.remove(tr)
-        #pass
-print('No of traces after cross-correlation threshold = ', len(stream_for_bp_corr_thresh))
-#bp_lib.data_plot(stream_for_bp_corr_thresh,event_long,event_lat,outdir,'data_plot_'+str(Array_name)+'.png')
-##########################################################################
-# Filtering traces
-##########################################################################
-#stream_filtered=stream_for_bp_corr_thresh.copy()
-#for tr in stream_filtered:
-#    #tr.detrend
-#    tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
-#    tr.detrend("linear")
-    #tr.normalize
-#stream_cut=stream_filtered.copy()
-#temp=stream_filtered.copy()
-#print('Total no of traces before STA-LTA:', len(temp))
-#temp=bp_lib.STA_LTA(temp,20,10,Start_P_cut_time)
-#print('Total no of traces after Cross-correlation:', len(temp))
 ##########################################################################
 # CUtting before and after P arrival 
 ##########################################################################
-stream_cut=stream_for_bp_corr_thresh.copy()
+stream_cut=stream_SPS_dist_azimuth.copy()
 print('Total no of traces before data gap checks:', len(stream_cut))
 for t in stream_cut:
         #t.trim(t.stats['P_arrival']-Start_P_cut_time,t.stats['P_arrival']+End_P_cut_time)
@@ -284,22 +203,66 @@ for t in stream_cut:
         if t.stats.npts < (Start_P_cut_time+End_P_cut_time)/t.stats.delta:
             stream_cut.remove(t)
         else:
-            pass
+            t.normalize()
 #stream_for_bp = bp_lib.snr_check(stream_cut,2,5,50)
-print('Total no of traces after cutting and data gap checks and final no of traces for bp:', len(stream_cut))
-stream_for_bp=stream_cut.copy()
-#Ref_station_index=bp_lib.get_ref_station(stream_cut_correlated,'mean','')
-Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
-ref_trace = stream_for_bp[Ref_station_index]
-print('Reference station')
+print('Total no of traces after cutting and data gap checks ', len(stream_cut))
+######### SNR
+stream_SNR=stream_cut.copy()
+print('Total no of traces before  SNR criteria:', len(stream_SNR))
+stream_SPS_dist_azimuth_SNR = bp_lib.snr_check(stream_SNR,SNR,snr_window,snr_window)
+print('Total no of traces after SNR criteria:', len(stream_SNR))
+##########################################################################
+# cross-correlation
+stream_correlated=stream_SNR.copy()
+Ref_station_index=bp_lib.get_ref_station(stream_correlated)
+ref_trace = stream_correlated[Ref_station_index]
 print(Ref_station_index)
 print(ref_trace)
-#stream_cut_filtered_correlated=bp_lib.crosscorr_stream(stream_cut_filtered,ref_trace,5)
-#stream_correlated = stream_SPS_dist_azimuth_SNR.copy()
-#print('Total no of traces before Cross-correlation:', len(stream_cut_correlated))
-#stream_cut_correlated=bp_lib.polarity(stream_cut_correlated,1/bp_l)
-#stream_cut_correlated=bp_lib.crosscorr_stream_xcorr(stream_cut_correlated,ref_trace,10)
-#print('Total no of traces after Cross-correlation:', len(stream_cut_correlated))
+print('Total no of traces before Cross-correlation:', len(stream_correlated))
+print('Performning cross-correlation. Without filtering')
+stream_correlated=bp_lib.crosscorr_stream_xcorr_no_filter(stream_correlated,ref_trace,corr_window,corr_window,corr_window)
+print('Total no of traces after Cross-correlation:', len(stream_correlated))
+##########################################################################
+#correlation threshold
+stream_corr_thresh = stream_correlated.copy()
+print('No of traces before cross-correlation threshold = ', len(stream_corr_thresh))
+for tr in stream_corr_thresh:
+    if (abs(tr.stats.Corr_coeff) >= threshold_correlation):
+        #time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
+        #plt.plot(time,tr.data/np.max(tr.data))
+        pass
+    else:
+        stream_corr_thresh.remove(tr)
+        #pass
+print('No of traces after cross-correlation threshold = ', len(stream_corr_thresh))
+##########################################################################
+# cross-correlation
+stream_correlated=stream_corr_thresh.copy()
+Ref_station_index=bp_lib.get_ref_station(stream_correlated)
+ref_trace = stream_correlated[Ref_station_index]
+print(Ref_station_index)
+print(ref_trace)
+print('Total no of traces before Cross-correlation:', len(stream_correlated))
+print('Performning cross-correlation. Without filtering')
+stream_correlated=bp_lib.crosscorr_stream_xcorr_no_filter(stream_correlated,ref_trace,corr_window,corr_window,corr_window)
+print('Total no of traces after Cross-correlation:', len(stream_correlated))
+##########################################################################
+#correlation threshold
+stream_corr_thresh = stream_correlated.copy()
+print('No of traces before cross-correlation threshold = ', len(stream_corr_thresh))
+for tr in stream_corr_thresh:
+    if (abs(tr.stats.Corr_coeff) >= threshold_correlation):
+        #time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
+        #plt.plot(time,tr.data/np.max(tr.data))
+        pass
+    else:
+        stream_corr_thresh.remove(tr)
+        #pass
+print('No of traces after cross-correlation threshold = ', len(stream_corr_thresh))
+##########################
+# final BB stream
+stream_for_bp=stream_corr_thresh.copy()
+print('No of traces for bp = ', len(stream_for_bp))
 # recalculating station weight
 for tr in stream_for_bp:
     count=0;
@@ -323,7 +286,12 @@ for tr in stream_for_bp:
 time_start = time.process_time()
 print('Finished preparing data.')
 print('Now writing the stream and its info.')
+
 def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, stack_start, stack_end):
+    '''
+    This function write the source grid  and associated travel times to the stations
+    in an array.
+    '''
     source_stream_info = []
     for t in stream_for_bp:
         distance = obspy.geodetics.locations2degrees(slat[j], slong[j], t.stats.station_latitude, t.stats.station_longitude)
@@ -346,10 +314,16 @@ results = Parallel(n_jobs=num_cores)(
     for j in range(len(slat)) )
 beam=[];
 beam = np.concatenate(results)
+#####################################################
+# Writing the source info for the array
 np.save(outdir+'/'"beam_info",beam,allow_pickle=True)
 print('Writing the array info in parallel.')
+#####################################################
+# getting the array info e.g., station location, P_arrival, Correlation parametes etc.
 bp_info = bp_lib.save_stream_info(stream_for_bp)
 np.save(outdir+'/'"array_bp_info",bp_info,allow_pickle=True)
+#####################################################
+# Saving the array obspy stream
 print('Writing the stream.')
 stream_for_bp.write(outdir+'/'"stream.mseed")
 
