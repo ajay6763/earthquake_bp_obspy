@@ -25,7 +25,7 @@ waveforms,./data/2016-01-03-mww67myanmar-indiaborderregion.miniseed
 model,iasp91
 Start_P_cut_time,100
 End_P_cut_time,300
-threshold_correlation,0.1 
+threshold_correlation,0.1
 SNR,2
 bp_l,0.2
 bp_u,5.0

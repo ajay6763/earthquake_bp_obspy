@@ -35,7 +35,11 @@ def main(argv):
     try:
         input_file = sys.argv[-1]
         #print('Input file is:',(input_file))
+        #try:
         Input = pd.read_csv('./'+input_file,header=None)
+        #except:
+        #    print("The provided input file does not exits.")
+        #    sys.exit()
     except:
         print('You did not provided input file (.csv file). You must run without -h option to use the input_default.csv.')
         message = input('Do you want to continue with default input.csv? (yes/no) :')
