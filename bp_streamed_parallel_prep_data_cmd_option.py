@@ -5,6 +5,9 @@ from __future__ import division
 import sys,os,time, getopt
 import obspy
 from obspy.taup import TauPyModel
+from obspy.geodetics import locations2degrees
+from obspy.geodetics.base import gps2dist_azimuth
+from obspy.signal.trigger import recursive_sta_lta_py
 import numpy as np
 import csv
 import pandas as pd
@@ -29,17 +32,13 @@ def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, mo
 
 def main(argv):
     time_start = time.time()
-    num_cores = int(12);root_order = int(2);corr_window=float(10);snr_window=float(10);extra_label=str('')
+    num_cores = int(12);root_order = int(2);corr_window=float(20);snr_window=float(20);extra_label=str('')
     print('\n###########################################################################################')
     print(' Welcome for help run this script with -h option\n')
     try:
         input_file = sys.argv[-1]
         #print('Input file is:',(input_file))
-        #try:
         Input = pd.read_csv('./'+input_file,header=None)
-        #except:
-        #    print("The provided input file does not exits.")
-        #    sys.exit()
     except:
         print('You did not provided input file (.csv file). You must run without -h option to use the input_default.csv.')
         message = input('Do you want to continue with default input.csv? (yes/no) :')
@@ -100,6 +99,7 @@ def main(argv):
     Start_P_cut_time    = float(res['Start_P_cut_time'])  #before P arrival in seconds
     End_P_cut_time      = float(res['End_P_cut_time']) #After P arrival seconds
     sps                 = float(res['sps'])  #samples per seconds
+    corr_window         = int(res['corr_window'])
     threshold_correlation=float(res['threshold_correlation'])
     SNR = float(res['SNR'])
     bp_l                = float(res['bp_l']) #Hz
@@ -112,7 +112,8 @@ def main(argv):
     smooth_time_window  = int(res['smooth_time_window'])   #seconds
     smooth_space_window  = int(res['smooth_space_window'])   #seconds
     source_grid_size    = float(res['source_grid_size']) #degrees
-    source_grid_extend  = float(res['source_grid_extend'])   #degrees
+    source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
+    source_grid_extend_y  = float(res['source_grid_extend_y'])   #degrees
     source_depth_size   = float(res['source_depth_size']) #km
     source_depth_extend = float(res['source_grid_extend']) #km
     try:
@@ -291,6 +292,7 @@ def main(argv):
     print('Total no of traces before  distance criteria:', len(stream_work))
     stream_work = bp_lib.check_distance(stream_work,dist_min,dist_max)
     print('Total no of traces after distance criteria:', len(stream_work))
+
     ######### azimuth
     print('Total no of traces before  azimuth criteria:', len(stream_work))
     stream_work = bp_lib.check_azimuth(stream_work,azimuth_min,azimuth_max)
@@ -299,10 +301,11 @@ def main(argv):
     ##########################################################################
     # CUtting before and after P arrival 
     ##########################################################################
-    stream_cut=stream_work.copy()
+    #stream_cut=stream_work.copy()
     print('Total no of traces before data gap checks:', len(stream_work))
     stream_work=bp_lib.stream_cut_P_arrival_normalize(stream_work,Start_P_cut_time,End_P_cut_time)
     print('Total no of traces after cutting and data gap checks ', len(stream_work))
+    
     ######### SNR check
     print('Total no of traces before  SNR criteria:', len(stream_work))
     stream_work = bp_lib.snr_check(stream_work,SNR,snr_window,snr_window)
@@ -316,9 +319,11 @@ def main(argv):
     Ref_station_index=bp_lib.get_ref_station(stream_work)
     ref_trace = stream_work[Ref_station_index]
     print('Total no of traces before Cross-correlation:', len(stream_work))
-    print('Performning cross-correlation. Without filtering')
+    print('Performning cross-correlation. With filtering')
     stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
                                                         ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
+    #                                                    threshold_correlation)
     print('Total no of traces after Cross-correlation:', len(stream_work))
     ##########################################################################
     # cross-correlation
@@ -328,6 +333,10 @@ def main(argv):
     print('Performning cross-correlation. Without filtering')
     stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
                                                         ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,\
+    #                                                    ref_trace,corr_window,corr_window,corr_window,
+    #                                                    bp_l,bp_u,
+    #                                                    threshold_correlation)
     print('Total no of traces after Cross-correlation:', len(stream_work))
   
     ##########################
@@ -336,7 +345,8 @@ def main(argv):
     ##########################################################################
     # Making potential sources grid
     ##########################################################################
-    slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
+    #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
+    slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
     ##########################################################################
     print('Finished preparing data.')
     print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
@@ -393,7 +403,7 @@ def main(argv):
         stack=[]
         for tr in stream_use:
             tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
-            cut = tr.data * tr.stats.Corr_coeff/tr.stats.Station_weight
+            cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
             stack.append(cut[0:int((stack_start+stack_end)*sps)])
         beam.append(np.sum(stack,axis=0))
     ## saving

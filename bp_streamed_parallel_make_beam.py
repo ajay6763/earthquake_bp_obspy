@@ -65,10 +65,15 @@ sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
 source_grid_size    = float(res['source_grid_size']) #degrees
-source_grid_extend  = float(res['source_grid_extend'])   #degrees
+#source_grid_extend  = float(res['source_grid_extend'])   #degrees
+source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
+source_grid_extend_y  = float(res['source_grid_extend_y'])   #degrees
+
 source_depth_size   = float(res['source_depth_size']) #km
 source_depth_extend = float(res['source_grid_extend']) #km
-slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
+#slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
+slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
+
 stations_file = str(res['stations'])
 stream_for_bp= obspy.read('./'+name+'/stream.mseed') 
 beam_info = np.load('./'+name+'/beam_info.npy',allow_pickle=True)

@@ -27,6 +27,76 @@ from mpl_toolkits.basemap import Basemap
 from obspy.imaging.beachball import beach
 import numpy as np
 ########### 
+def array_selection_plot(stream,event_lat,event_long,az_min,az_max,dist_min,dist_max,threshold_correlation,corr_window,bp_l,bp_u):
+    fig, ax = plt.subplots(1, 2, sharex=False, sharey=False,figsize=(10,3))
+    #map =  Basemap(projection='cyl', lon_0=event_long,lat_0=event_lat,
+    #        resolution='c',ax=ax[0])
+    width = 28e6
+    #map = Basemap(width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c',ax=ax[1])
+    map = Basemap(ax=ax[0],width=width,height=width,projection='aeqd',lon_0=event_long,lat_0=event_lat,resolution='c')
+    stream_sorted=check_azimuth(stream,az_min,az_max)
+    stream_sorted=check_distance(stream_sorted,dist_min,dist_max)
+    Ref_trace_ind =get_ref_station(stream_sorted)
+    ref_trace=stream_sorted[Ref_trace_ind]
+    ##########################################################################
+    # cross-correlation
+    # Cross-correlation is perfpormed 2 times in order to keep the reference 
+    # trace in the center of the array
+    ##########################################################################
+    print('Total no of traces before Cross-correlation:', len(stream_sorted))
+    print('Performning cross-correlation. Without filtering')
+    stream_sorted=crosscorr_stream_xcorr_no_filter(stream_sorted,\
+                                                        ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    print('Total no of traces after Cross-correlation:', len(stream_sorted))
+    ##########################################################################
+    # cross-correlation
+    Ref_trace_ind =get_ref_station(stream_sorted)
+    ref_trace=stream_sorted[Ref_trace_ind]
+    print('Total no of traces before Cross-correlation:', len(stream_sorted))
+    print('Performning cross-correlation. Without filtering')
+    stream_sorted=crosscorr_stream_xcorr_no_filter(stream_sorted,\
+                                                        ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    print('Total no of traces after Cross-correlation:', len(stream_sorted))
+    count=0
+    for tr in stream_sorted:
+        count=count+1
+        if tr.stats.station == ref_trace.stats.station:
+            map.scatter(tr.stats.station_longitude,tr.stats.station_latitude,latlon=True,facecolor='blue',marker='^')
+            time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
+            #tr.plot(starttime=t.stats.P_arrival-30,endtime=t.stats.P_arrival+60,type='relative')
+            #tr.plot(type='relative')
+            tr.normalize()
+            cut = tr.data  #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
+            #cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
+            cut=cut/np.max(cut) #+ count
+            cut=cut +count
+            time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
+            ax[1].plot(time,cut,color='red',linewidth=0.8)
+            #ax[1].plot(time,tr.data,color='gray')
+        else:
+            map.scatter(tr.stats.station_longitude,tr.stats.station_latitude,latlon=True,facecolor='blue',marker='^')
+            time = np.arange(0, tr.stats.npts / tr.stats.sampling_rate, tr.stats.delta)
+            #tr.plot(starttime=t.stats.P_arrival-30,endtime=t.stats.P_arrival+60,type='relative')
+            #tr.plot(type='relative')
+            tr.normalize()
+            cut = tr.data  #bp_lib.cut_window(tr, t_corr, -5, STF_end)[0]
+            #cut=cut*tr.stats['Corr_sign']*tr.stats['Corr_coeff']
+            cut=cut/np.max(cut) #+ count
+            cut=cut +count
+            time = np.arange(0, len(cut)/ tr.stats.sampling_rate, tr.stats.delta)
+            ax[1].plot(time,cut,color='grey',linewidth=0.5)
+            #ax[1].plot(time,tr.data,color='gray')
+    map.scatter(event_long,event_lat,latlon=True,facecolor='red',marker='*')
+    map.drawcoastlines(linewidth=0.1)
+    #x, y = map(event_long, event_lat)
+    #focmecs = Focal_mech
+    #ax = plt.gca()
+    #b = beach(focmecs, xy=(x, y), width=10, linewidth=1, alpha=0.85)
+    #b.set_zorder(10000000)
+    #ax.add_collection(b)
+    ## plot traces
+    plt.show()
+    #fig.savefig(outdir+'/'+outname)
 def calculate_shear_mach_front_angle(super_shear_velocity):
     # Calculate the shear Mach front angle using the super-shear velocity
     sin_shear_mach_front_angle = 1 / super_shear_velocity
@@ -471,7 +541,7 @@ def crosscorr_stream(stream,ref_trace,window):
         #except:
         #    stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u):
+def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
     '''
     '''
     for tr in stream:
@@ -484,9 +554,12 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            tr.stats['Corr_coeff'] = value
-            tr.stats['Corr_shift']  = shift
-            tr.stats['Corr_sign']  = 1.0
+            if (abs(value) >= corr_thresh):
+                tr.stats['Corr_coeff'] = value
+                tr.stats['Corr_shift']  = shift
+                tr.stats['Corr_sign']  = 1.0
+            else:
+                stream.remove(tr)
         except:
             print('Could not cross-correlate! Hence remove this waveform.')
             stream.remove(tr)
@@ -749,6 +822,25 @@ def make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size):
     '''
     x=np.arange(event_long-source_grid_extend,event_long+source_grid_extend,source_grid_size)
     y=np.arange(event_lat-source_grid_extend,event_lat+source_grid_extend,source_grid_size)
+    slat = []
+    slong = []
+    for i in range(np.size(x)):
+        for j in range(np.size(y)):
+            slong.append(x[i])
+            slat.append(y[j])
+    return slong,slat
+
+def make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,
+                            source_grid_extend_y,source_grid_size):
+    '''
+    This function makes potential source grid around the epicentre in a area
+    defined by a constant source_grid_extend discretized at a constant
+    source_grid_size
+    Retunrs   slat ,slong
+
+    '''
+    x=np.arange(event_long-source_grid_extend_x,event_long+source_grid_extend_x,source_grid_size)
+    y=np.arange(event_lat-source_grid_extend_y,event_lat+source_grid_extend_y,source_grid_size)
     slat = []
     slong = []
     for i in range(np.size(x)):
