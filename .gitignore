@@ -1,7 +1,14 @@
 #ignore everything
 *
 # except
-!.gitignore
-!*.ipynb
-!*.py
-!input_default.csv
+!bp_lib.py
+!bp_combine_arrays.py
+!bp_streamed_parallel_prep_data_cmd_option.py
+!bp_streamed_parallel_make_beam.py
+!bp_post_process_make_results.py
+!bp_combine_arrays.py
+!Array_selection.ipynb
+#!.gitignore
+#!*.ipynb
+##!*.py
+#!input_default.csv
