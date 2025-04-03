@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import bp_lib as bp_lib
+import multiprocessing as mp
 ########### 
 time_start = time.time()
 try:
@@ -68,9 +69,7 @@ source_grid_size    = float(res['source_grid_size']) #degrees
 #source_grid_extend  = float(res['source_grid_extend'])   #degrees
 source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
 source_grid_extend_y  = float(res['source_grid_extend_y'])   #degrees
-
 source_depth_size   = float(res['source_depth_size']) #km
-source_depth_extend = float(res['source_grid_extend']) #km
 #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
 slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
 
@@ -88,30 +87,6 @@ print('Done loading data.')
 print('Total time taken:',time.process_time() - time_start)
 print('Now gathering stream information..')
 stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
-'''
-sta_name=list(stream_info[:,1])
-for t in stream_for_bp:
-        if len(t.stats['station'].split('.')) > 1:
-            sta          = t.stats.station+str('H')
-        else:
-            sta          = t.stats.station
-        if sta in sta_name:
-            ind                          = sta_name.index(sta)
-            t.stats['origin_time']       = origin_time
-            t.stats['station_longitude'] = float(stream_info[ind,2])
-            t.stats['station_latitude']  = float(stream_info[ind,3])
-            t.stats['Dist']              = float(stream_info[ind,4])
-            t.stats['Azimuth']           = float(stream_info[ind,5])
-            arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=t.stats.Dist,phase_list=["P"])
-            arr                          = arrivals[0]
-            t_travel                     = arr.time;
-            t.stats['P_arrival']         = origin_time + t_travel +  timedelta(hours=9)
-            t.stats['Corr_coeff']        = float(stream_info[ind,7])
-            t.stats['Corr_shift']        = float(stream_info[ind,8])
-            t.stats['Corr_sign']         = float(stream_info[ind,9])
-        else:
-            pass
-'''
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
 print('Done gathering stream information.')
@@ -123,6 +98,7 @@ print("Time taken: {:.1f} min".format((time.time()-time_start)/60.0))
 print('Now making the beam...')
 ##########################################################################
 # Make beam
+'''
 beam_info_reshaped=beam_info.reshape(len(slat),len(stream_for_bp),4)
 print('beam_info',np.shape(beam_info))
 print('beam_info_reshaped',np.shape(beam_info_reshaped))
@@ -148,7 +124,6 @@ print('Saving the beam.')
 file_save='beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
 np.savetxt(outdir+'/'+file_save,beam)
 print("Total execution time: {:.1f} min".format((time.time()-time_start)/60.0))
-
 '''
 def process_beam(j):
     source = beam_info_reshaped[j]
@@ -157,14 +132,11 @@ def process_beam(j):
         tr = stream_source.select(station=source[i][2])
         arrival=source[i][3]+tr[0].stats.Corr_shift
         tr.trim(arrival-stack_start,arrival+stack_end)
-        tr.detrend('linear')
-        tr.normalize()
     stream_use=stream_source.copy()
     stack=[]
     for tr in stream_use:
-        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u,corners=5)
-        tr.detrend("linear")
-        cut = tr.data * tr.stats.Corr_coeff/tr.stats.Station_weight
+        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+        cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
     return np.sum(stack,axis=0)
 
@@ -179,5 +151,14 @@ if __name__ == '__main__':
     print('Total time taken:',time.process_time() - time_start)
     file_save='beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
     np.savetxt(outdir+'/'+file_save,beam)
-'''
+    print("Done makeing the beam for:", outdir)
+    print("The frequency band used was:", bp_l,bp_u)
+    print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
+    print('#########################################################')
+    print()
+    print("Now to plot run the following: ")  
+    print()
+    print("python bp_post_process_make_results.py", outdir)  
+    print("You can also pass the frequency band other than in the input file but you should have the beam made for that.")  
+
 

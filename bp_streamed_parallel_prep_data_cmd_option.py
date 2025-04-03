@@ -5,15 +5,13 @@ from __future__ import division
 import sys,os,time, getopt
 import obspy
 from obspy.taup import TauPyModel
-from obspy.geodetics import locations2degrees
-from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.trigger import recursive_sta_lta_py
 import numpy as np
 import csv
 import pandas as pd
 import bp_lib
 from joblib import Parallel, delayed
 import obspy.geodetics
+import multiprocessing as mp
 
 def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, model):
     '''
@@ -30,6 +28,35 @@ def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, mo
         source_stream_info.append([slat[j], slong[j],t.stats.station,t_total])
     return source_stream_info
 
+def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, model):
+    '''
+    This function write the source grid  and associated travel times to the stations
+    in an array.
+    '''
+    source_stream_info = []
+    
+    for t in stream_for_bp:
+        distance = obspy.geodetics.locations2degrees(slat[j], slong[j], t.stats.station_latitude, t.stats.station_longitude)
+        arrivals = model.get_travel_times(source_depth_in_km=event_depth, distance_in_degree=distance, phase_list=["P"])
+        arr = arrivals[0]
+        t_travel = arr.time
+        t_total = origin_time + t_travel #+ t.stats.Corr_shift
+        source_stream_info.append([slat[j], slong[j],t.stats.station,t_total])
+    return source_stream_info
+def process_beam(j):
+    source = beam_info_reshaped[j]
+    stream_source=stream_for_bp.copy()
+    for i in range(len(source)):
+        tr = stream_source.select(station=source[i][2])
+        arrival=source[i][3]+tr[0].stats.Corr_shift
+        tr.trim(arrival-stack_start,arrival+stack_end)
+    stream_use=stream_source.copy()
+    stack=[]
+    for tr in stream_use:
+        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+        cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
+        stack.append(cut[0:int((stack_start+stack_end)*sps)])
+    return np.sum(stack,axis=0)
 def main(argv):
     time_start = time.time()
     num_cores = int(12);root_order = int(2);corr_window=float(20);snr_window=float(20);extra_label=str('')
@@ -319,7 +346,7 @@ def main(argv):
     Ref_station_index=bp_lib.get_ref_station(stream_work)
     ref_trace = stream_work[Ref_station_index]
     print('Total no of traces before Cross-correlation:', len(stream_work))
-    print('Performning cross-correlation. With filtering')
+    print('Performning cross-correlation. Without filtering')
     stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
                                                         ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
@@ -371,20 +398,29 @@ def main(argv):
     print('Writing the stream.')
     stream_for_bp.write(outdir+'/'"stream.mseed")
     print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
-
     print('Now computing station weight..')
-    for tr in stream_for_bp:
-        count=1;
-        for tr_ in stream_for_bp:
-            dist=((tr.stats.station_latitude-tr_.stats.station_latitude)**2 + 
-                (tr.stats.station_longitude-tr_.stats.station_longitude)**2 )**0.2;
-            if ( dist <= 1):
-                count=count+1;
-            else:
-                continue
-        tr.stats['Station_weight'] = count
+    stream_for_bp=bp_lib.stream_station_weight(stream_for_bp)
     print('Done computing station weight.')
+    print("Data prepration DONE for Exp:",  outdir)
     print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
+    print('#########################################################')
+    print("Now to make the make by running following. Note that")
+    print("the freuncy band from the input.csv file be used as default.")
+    print("If you want to change it add the lower and higher frequency at the end separated by space.")
+    print()
+    print()
+    print("Now run the following to use frequency and from input.csv: ")  
+    print()
+    print("python bp_streamed_parallel_make_beam.py ", outdir)  
+    print()
+    print()
+    print("Run the following to use differnt frequency band: ")  
+    print()
+    print("python bp_streamed_parallel_make_beam.py", outdir ,"bp_l bp_u")  
+    print()
+    print("where bp_l is the lower end and bp_u is upper end of the frequency band. ")  
+
+    '''
     print('Now making the beam...')
     ##########################################################################
     # Make beam
@@ -414,8 +450,7 @@ def main(argv):
     np.savetxt(outdir+'/'+file_save,beam)
     print("Progress back-projection DONE for Exp:",  outdir)
     print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
+    '''
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
-    

@@ -75,12 +75,12 @@ except:
     bp_l                = float(res['bp_l']) #Hz
     bp_u                = float(res['bp_u'])   #Hz
 '''
-bp_l=0.5
+bp_l=0.1
 bp_u=2.0
 #bp_l                = float(res['bp_l']) #Hz
 #bp_u                = float(res['bp_u'])   #Hz
 smooth_time_window  = 1 #int(res['smooth_time_window'])   #seconds
-smooth_space_window = 100 #int(res['smooth_space_window'])
+smooth_space_window = 1 #int(res['smooth_space_window'])
 stack_start         = int(res['stack_start'])   #in seconds
 stack_end           = int(res['stack_end'])  #in seconds
 STF_start           = int(res['STF_start'])
@@ -298,7 +298,9 @@ region=[event_long-source_grid_extend_x,event_long+source_grid_extend_x,event_la
 
 #region=[35.5,39,36,39]
 #region=[35.5,39.5,36,38.5]
-title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)
+#title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_t'+str(smooth_time_window)+'_Space'+str(smooth_space_window)
+title="+t"+name+'_'+str(bp_l)+'-'+str(bp_u)+'Hz_t'+str(smooth_time_window)+'_Space'+str(smooth_space_window)
+
 spacing=source_grid_size
 fig = pygmt.Figure()
 figsize=("9c", "8c")
@@ -309,19 +311,18 @@ proj="M?"
 with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     sharey=False,
     sharex=False,):
-    energy_cmap=pygmt.makecpt(cmap="bilbao", reverse=True,series=[0.4, 1, 0.1])
-    df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
-    grd_ = pygmt.xyz2grd(data=df, region=region, spacing=spacing)
+    energy_cmap=pygmt.makecpt(cmap="bilbao", reverse=False,series=[0.4, 1, 0.1])
+    #df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
+    grd_ = pygmt.xyz2grd(x=cumulative_energy[:,0],y=cumulative_energy[:,1],z=cumulative_energy[:,2],region=region, spacing=spacing)
     grd = pygmt.grdsample(grd_,spacing=0.1)
-    
-    fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, frame=["af", "WSne"],\
+    fig.basemap(region=region,projection=proj,frame=["wNsE","af"],)
+    fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, \
                  panel=[0, 0])
-    fig.colorbar(frame=["a0.2", "x+lEnergy", "y+lrelative"])
-    fig.coast(shorelines=True,frame=True,)
-    #fig.plot(x=aftershock[:,1],y=aftershock[:,0],size=aftershock[:,3]/20,style='cc',fill = 'red',pen='black',)
-    #fig.plot(x=aftershock['longitude'],y=aftershock['latitude'],projection=proj,region=region,size=aftershock['mag']/50,style='cc',fill = 'red',pen='black',transparency=60)
-    fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,latitude=event_lat,depth=event_depth,transparency=40,)
-    peak_cmap=pygmt.makecpt(cmap="seis", series=[STF_start, STF_end,  (STF_end-STF_start)/20])
+    fig.colorbar(cmap=energy_cmap,position="jBL+o0.5c/-1.0c+h",box=False,frame=["x+l Normalized energy "],scale=1,)
+    fig.coast(shorelines=True)
+    fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,
+             latitude=event_lat,depth=event_depth,transparency=40,)
+    peak_cmap=pygmt.makecpt(cmap="seis", series=[STF_start, STF_end,  10])
     fig.plot(x=peak_energy[STF_start:STF_end,1],y=peak_energy[STF_start:STF_end,2],projection=proj,region=region, \
              fill=peak_energy[STF_start:STF_end,0],cmap=True, \
          no_clip=True,size=peak_energy[STF_start:STF_end,3]/scale,style='cc', pen='0.5p,black',transparency=40,)
@@ -334,7 +335,7 @@ with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     except:
         pass
    
-    fig.colorbar(cmap=peak_cmap,position="jBL+o-2.0c/0.8c+v",box=False,frame=["x+l ", "y+lTime(s)"],scale=1,)
+    fig.colorbar(cmap=peak_cmap,position="jBL+o-2.0c/-1c+v",box=False,frame=["x+l ", "y+lTime(s)"],scale=1,)
     #fig.plot(x=event_long,y=event_lat,style= 'a0.5c',fill = 'blue',pen='black',)
     #fig.legend()
 #########################################################################################################################################
@@ -349,30 +350,28 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
 #########################################################################################################################################
 # Plotting STF
 #########################################################################################################################################
-    fig.basemap(
-        region=[STF_start, STF_end, 0, 1], projection="X?", frame=["x+lTime (s)", "y+lAmplitude", str(title)], panel=[0, 0]
-    )
+    fig.basemap(region=[STF_start, STF_end, 0, 1], projection="X?", frame=["WSne"+str(title),"x+lTime (s)", "y+lAmplitude"], panel=[0, 0],
+        )
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,black',)
-    fig.plot(x=stf_beam[:,1],y=stf_beam[:,0], pen='2p,black',)
+    fig.plot(x=stf_beam[:,1],y=stf_beam[:,0], pen='2p,black',frame=["af", "WSne"])
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,red',)
 #########################################################################################################################################    
 # Plotting Ruptuer velocity
 #########################################################################################################################################
     #peak_cmap=pygmt.makecpt(cmap="bilbao", series=[0, STF_end,  (STF_end-STF_start)/15])
-    fig.basemap(
-        region=[STF_start, STF_end,0,4*STF_end ], projection="X?", frame=["x+lTime (s)", "y+lDistance (km)"], panel=[1, 0]
-    )
+    fig.basemap(region=[STF_start, STF_end,0,4*STF_end ], projection="X?", frame=["WSne","x+lTime (s)", "y+lDistance (km)"], panel=[1, 0],
+        )
     dist_x=5*peak_energy[STF_start:STF_end,0]
     #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,green',label='5 km/s')
-    #dist_x=4*peak_energy[STF_start:STF_end,0]
-    #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,blue',label='4 km/s')
+    dist_x=4*peak_energy[STF_start:STF_end,0]
+    fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,blue',label='4 km/s')
     #dist_x=3*peak_energy[STF_start:STF_end,0]
     #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,red',label='3 km/s')
     #fig.plot(y=dist_rupture2,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='sc',fill = 'orange',pen='black',
     #        transparency=40,label='t=0 peak')
-    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/peak_scale,style='cc',fill = 'blue',pen='black',
-            transparency=40,label='wrt Epi')
-    #fig.legend(position="jBR+o0.0c", box=False)
+    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/peak_scale,style='cc',fill = 'orange',pen='black',
+            transparency=0,label='wrt Epi')
+    fig.legend(position="jBR+o0.0c", box=False)
     
     #fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'blue',pen='black',
     #        transparency=40)
@@ -401,8 +400,8 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
                                           ,origin_time,event_depth,model)
         Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
         ref_trace=stream_for_bp[Ref_station_index]
-        stream_out=stream_for_bp.copy()
-        for tr in stream_out:
+        #stream_for_bp.copy()
+        for tr in stream_for_bp:
             #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
             st_time=tr.stats['P_arrival']+tr.stats['Corr_shift']-5
             end_time=st_time+stack_end

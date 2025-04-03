@@ -1,18 +1,10 @@
 import sys,os
 import obspy
 from obspy.taup import TauPyModel
-from obspy.geodetics import locations2degrees
-from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.trigger import recursive_sta_lta_py
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation
-import matplotlib.transforms as mtransforms
 import pygmt
-import csv
 import pandas as pd
-import geopandas as gpd
-from datetime import datetime, timedelta
 import time
 
 ########### 
@@ -135,34 +127,7 @@ print('Origin time:',origin_time)
 print('Long= %f Lat= %f Depth= %f' % (event_long,event_lat,event_depth))
 #print('bp_low= %f bp_high= %f Correlation threshold= %f SNR= %f'% (bp_l,bp_u,threshold_correlation,SNR))
 print('#############################################################################\n')
-sta_name=list(stream_info[:,1])
-for t in stream_for_bp:
-        if len(t.stats['station'].split('.')) > 1:
-            sta          = t.stats.station+str('H')
-        else:
-            sta          = t.stats.station
-        #net 
-        if sta in sta_name:
-            ind                          = sta_name.index(sta)
-            t.stats['origin_time']       = origin_time
-            t.stats['station_longitude'] = float(stream_info[ind,2])
-            t.stats['station_latitude']  = float(stream_info[ind,3])
-            t.stats['Dist']              = float(stream_info[ind,4])
-            t.stats['Azimuth']           = float(stream_info[ind,5])
-            arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=t.stats.Dist,phase_list=["P"])
-            arr                          = arrivals[0]
-            t_travel                     = arr.time
-            t.stats['P_arrival']         = origin_time + t_travel 
-        
-            #t.stats['P_arrival']         = float(stream_info[ind,6]) 
-            t.stats['Corr_coeff']        = float(stream_info[ind,7])
-            t.stats['Corr_shift']        = float(stream_info[ind,8])
-            t.stats['Corr_sign']         = float(stream_info[ind,9])
-        else:
-            pass
-            #print('Something is not right.')
-
-
+stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
 print('Computing computing station weight.')
@@ -185,37 +150,42 @@ beam_smoothened=np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
 print('Maximum energy of the beam:',np.max(beam_smoothened))
 #plt.plot(moving_average(beam_reshaped[:][10],10*sps))
 
-#plt.plot(moving_average(beam_reshaped[:][10],20*sps))
+################################
+# getting the STF
 stf_beam      = np.sum(beam_smoothened,axis=0)
 print('Size of STF:', np.shape(stf_beam))
+#Taking square becaouse we are interested in the power
+#stf_beam=stf_beam**2
+#stf_beam=stf_beam[stack_start*sps:(stack_end)*sps]
 stf_beam=stf_beam[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
+
 stf_beam=stf_beam/np.max(stf_beam)
 print('Size of STF:', np.shape(stf_beam))
 stf_beam=np.column_stack((stf_beam,range(len(stf_beam))))
 stf_beam[:,1]=stf_beam[:,1]/sps
 file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,stf_beam,header='energy(normalized) time(s) ')  
-
+###########################################
 # Cumulative energy
 beam_cumulative_use=beam_smoothened.T
+#temp     =np.sum(beam_cumulative_use[stack_start*sps:(stack_end)*sps],axis=0)
 temp     =np.sum(beam_cumulative_use[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps],axis=0)
-#temp     =np.sum(beam_smoothened,axis=1)
+
 print('Size of the cumulative energy:',np.shape(temp))
-np.size(temp)
 m,n=np.shape(beam_smoothened)
 cumulative_energy=np.zeros((m,3))
 cumulative_energy[:,2]=temp/np.max(temp)
 cumulative_energy[:,0]=slong
 cumulative_energy[:,1]=slat
-
 cumulative_energy[:,2]=cumulative_energy[:,2]/np.max(cumulative_energy[:,2])
-
 file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,cumulative_energy,header='long lat energy(normalized)')
-
 print('Maximum energy of the cumulative energy:',np.max(cumulative_energy[:,2]))
-
+############################################################
+# peak energy points
+#beam_peak_energy_use=beam_smoothened.T[stack_start*sps:(stack_end)*sps]
 beam_peak_energy_use=beam_smoothened.T[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
+
 print('Maximum energy of the beam:',np.max(beam_peak_energy_use))
 m,n=np.shape(beam_peak_energy_use)
 peak_energy=np.zeros((int(m/sps),4))
@@ -225,57 +195,52 @@ for i in range(len(peak_energy)):
     peak_energy[i,0] = i
     peak_energy[i,1] = slong[ind]
     peak_energy[i,2] = slat[ind]
-    #peak_energy[i,3] = beam_smoothened[ind][i]
     peak_energy[i,3] = beam_peak_energy_use[i*sps][ind]
-    #print(beam_peak_energy_use[i][ind])
 peak_energy[:,3]=peak_energy[:,3]/np.max(peak_energy[:,3])
 print('Maximum energy of the peaks:',np.max(peak_energy[:,3]))
-
-dist_rupture=np.zeros(len(peak_energy))
-dist_rupture2=np.zeros(len(peak_energy))
-
+###############################################################
+# rupture distance and velocity
+dist_rupture=np.zeros(len(peak_energy)) # w.r.t to epicenter
+dist_rupture2=np.zeros(len(peak_energy)) # w.r.st to the start of the peak
+dist_rupture3=np.zeros(len(peak_energy)) # peak by peak
 for i in range(len(dist_rupture)-1):
     dist_rupture[i]= np.sqrt(((peak_energy[i,1]-event_long)**2 + (peak_energy[i,2]-event_lat)**2))*(111)
     dist_rupture2[i]= np.sqrt(((peak_energy[i,1]-peak_energy[0,1])**2 + (peak_energy[i,2]-peak_energy[0,2])**2))*(111)
+    dist_rupture3[i]= np.sqrt(((peak_energy[i+1,1]-peak_energy[i,1])**2 + (peak_energy[i+1,2]-peak_energy[i,2])**2))*(111)
 peak_energy=np.column_stack((peak_energy,dist_rupture))
 peak_energy=np.column_stack((peak_energy,dist_rupture2))
+peak_energy=np.column_stack((peak_energy,np.cumsum(dist_rupture2)))
 
 file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
 np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
-#plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='violet',
-#            label='w.r.t peak t=0',marker='o',edgecolors='black')
+plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='violet',
+            label='w.r.t peak t=0',marker='o',edgecolors='black')
 plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='orange',
             label='w.r.t Epicenter',marker='s',edgecolors='black')
-#plt.scatter(x=np.cumsum(dist_rupture3[:]), y=peak_energy[:,0],s=peak_energy[:,3]*100,c=peak_energy[:,3],cmap='magma',
-#            label='w.r.t Epicenter',marker='*')
-#plt.plot(np.gradient(dist_rupture), peak_energy[st:end,0])
-#plt.plot(10*peak_energy[st:end,0],peak_energy[st:end,0],label='10 km/s')
 plt.plot(5.0*peak_energy[:,0],peak_energy[:,0],label='5 km/s')
 plt.plot(4.0*peak_energy[:,0],peak_energy[:,0],label='4 km/s')
-plt.plot(3.0*peak_energy[:,0],peak_energy[:,0],label='3 km/s')
+plt.plot(3.5*peak_energy[:,0],peak_energy[:,0],label='3 km/s')
 #plt.plot(1*peak_energy[st:end,0],peak_energy[st:end,0],label='1.0 km/s')
 plt.xlabel('distance (km)')
 plt.ylabel('tim (s)')
 plt.legend()
 plt.colorbar()
-plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
+#plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
+plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_combined_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'.png')
+
+#plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
 
 
-
-
-stream_for_plot=stream_for_bp.copy()
-#aftershock=pd.read_csv('./data/Melgar_et_al_model/zenodo/aftershocks.xlsx')
+###################################################
+# plotting
+# loading other data e.g, aftershocks:
+# Note that the input file name and loaction is fixed here @ajay6763- automate it
 try:
-    aftershocks=pd.read_csv('./data/kyrgyzstan-xinjiang-border_catalog.csv')
-    #aftershock= aftershock_orig.loc[(aftershock_orig['relative_time'] <= 32835.731) & (aftershock_orig['mag'] >= 0.0) ]
-    #aftershock_melgar=pd.read_csv('./data/Melgar_et_al_model/zenodo/Aftershocks_Melgar_et_al_2023.csv')
-    #aftershock_dd=pd.read_csv('./data/Melgar_et_al_model/zenodo/aftershocks.csv')
-    #faults = geopd.read_file('./data/Turkey_Emergency_EQ_Data/Turkey_Emergency_EQ_Data/simple_fault_2023-03-15/simple_fault_2023-3-15.shp')
+    #aftershocks=np.loadtxt('./data/Myanmar/Myanmar2025-n-aftershock.txt',usecols=[4,5,6,7,8,9,10],comments='#')
+    aftershocks=pd.read_csv('./data/Myanmar/Wilber_catalog.txt.txt',delimiter='|')
 except:
     pass
-
 #source_grid_extend=1
-
 region=[event_long-source_grid_extend_x,event_long+source_grid_extend_x,event_lat-source_grid_extend_y,event_lat+source_grid_extend_y]
 
 #region=[35.5,39,36,39]
@@ -287,6 +252,7 @@ for tr in stream_for_bp:
     sta_lat.append(tr.stats.station_latitude)
     sta_long.append(tr.stats.station_longitude)
 spacing=source_grid_size
+spacing=source_grid_size
 fig = pygmt.Figure()
 figsize=("9c", "8c")
 proj="M?"
@@ -296,31 +262,32 @@ proj="M?"
 with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     sharey=False,
     sharex=False,):
-    energy_cmap=pygmt.makecpt(cmap="magma", reverse=True,series=[0.5, 1, 0.01])
-    df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
-    grd = pygmt.xyz2grd(data=df, region=region, spacing=spacing)
-    fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, frame=["af", "wSnE"],\
+    energy_cmap=pygmt.makecpt(cmap="bilbao", reverse=False,series=[0.4, 1, 0.1])
+    #df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
+    grd_ = pygmt.xyz2grd(x=cumulative_energy[:,0],y=cumulative_energy[:,1],z=cumulative_energy[:,2],region=region, spacing=spacing)
+    grd = pygmt.grdsample(grd_,spacing=0.1)
+    fig.basemap(region=region,projection=proj,frame=["wNsE","af"],)
+    fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, \
                  panel=[0, 0])
-    fig.colorbar(frame=["a0.2", "x+lEnergy", "y+lrelative"])
-    fig.coast(shorelines=True,frame=True,)
-    
-    #fig.plot(x=aftershock[:,1],y=aftershock[:,0],size=aftershock[:,3]/20,style='cc',fill = 'red',pen='black',)
-    #fig.plot(x=aftershock['longitude'],y=aftershock['latitude'],projection=proj,region=region,size=aftershock['mag']/50,style='cc',fill = 'red',pen='black',transparency=60)
-    try:
-        fig.plot(x=aftershocks['Lon'],y=aftershocks['Lat'],size=aftershocks['Mag']/50,style='cc',fill = 'black',pen='black')#,transparency=0)
-    except:
-        pass
-    fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,latitude=event_lat,depth=event_depth,transparency=40,)
-    peak_cmap=pygmt.makecpt(cmap="seis", series=[STF_start, STF_end,  (STF_end-STF_start)/10])
+    fig.colorbar(cmap=energy_cmap,position="jBL+o0.5c/-1.0c+h",box=False,frame=["x+l Normalized energy "],scale=1,)
+    fig.coast(shorelines=True)
+    fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,
+             latitude=event_lat,depth=event_depth,transparency=40,)
+    peak_cmap=pygmt.makecpt(cmap="seis", series=[STF_start, STF_end,  10])
     fig.plot(x=peak_energy[STF_start:STF_end,1],y=peak_energy[STF_start:STF_end,2],projection=proj,region=region, \
              fill=peak_energy[STF_start:STF_end,0],cmap=True, \
          no_clip=True,size=peak_energy[STF_start:STF_end,3]/scale,style='cc', pen='0.5p,black',transparency=40,)
     #fig.plot(x=peak_energy[:,1],y=peak_energy[:,2],projection=proj,region=region, \
     #         fill=peak_energy[:,0],cmap=True, \
     #     no_clip=True,style='c0.1', pen='0.5p,black',transparency=40,)
-    
-    fig.colorbar(cmap=peak_cmap,position="jBL+o-2.0c/0.8c+v",box=False,frame=["x+lTime(s) "],scale=1,)
-    fig.plot(x=event_long,y=event_lat,style= 'a0.5c',fill = 'blue',pen='black',)
+    try:
+        fig.plot(x=aftershocks[' Longitude '],y=aftershocks[' Latitude '],
+                 size=aftershocks[' Magnitude ']/20,style='ac',fill = 'black',pen='black')#,transparency=0)
+    except:
+        pass
+   
+    fig.colorbar(cmap=peak_cmap,position="jBL+o-2.0c/-1c+v",box=False,frame=["x+l ", "y+lTime(s)"],scale=1,)
+    #fig.plot(x=event_long,y=event_lat,style= 'a0.5c',fill = 'blue',pen='black',)
     #fig.legend()
 #########################################################################################################################################
 # Left, two subplots
@@ -334,39 +301,40 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
 #########################################################################################################################################
 # Plotting STF
 #########################################################################################################################################
-    fig.basemap(
-        region=[STF_start, STF_end, 0, 1], projection="X?", frame=["x+lTime (s)", "y+lAmplitude", str(title)], panel=[0, 0]
-    )
+    fig.basemap(region=[STF_start, STF_end, 0, 1], projection="X?", frame=["WSne"+str(title),"x+lTime (s)", "y+lAmplitude"], panel=[0, 0],
+        )
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,black',)
-    fig.plot(x=stf_beam[:,1],y=stf_beam[:,0], pen='2p,black',)
+    fig.plot(x=stf_beam[:,1],y=stf_beam[:,0], pen='2p,black',frame=["af", "WSne"])
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,red',)
 #########################################################################################################################################    
 # Plotting Ruptuer velocity
 #########################################################################################################################################
-
     #peak_cmap=pygmt.makecpt(cmap="bilbao", series=[0, STF_end,  (STF_end-STF_start)/15])
-    fig.basemap(
-        region=[STF_start, STF_end,0,4*STF_end ], projection="X?", frame=["x+lTime (s)", "y+lDistance (km)"], panel=[1, 0]
-    )
+    fig.basemap(region=[STF_start, STF_end,0,4*STF_end ], projection="X?", frame=["WSne","x+lTime (s)", "y+lDistance (km)"], panel=[1, 0],
+        )
     dist_x=5*peak_energy[STF_start:STF_end,0]
     #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,green',label='5 km/s')
-    #dist_x=4*peak_energy[STF_start:STF_end,0]
-    #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,blue',label='4 km/s')
+    dist_x=4*peak_energy[STF_start:STF_end,0]
+    fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,blue',label='4 km/s')
     #dist_x=3*peak_energy[STF_start:STF_end,0]
     #fig.plot(y=dist_x,x=peak_energy[STF_start:STF_end,0], style= None,pen='0.5p,red',label='3 km/s')
     #fig.plot(y=dist_rupture2,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='sc',fill = 'orange',pen='black',
     #        transparency=40,label='t=0 peak')
-    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'blue',pen='black',
-            transparency=40,label='wrt Epi')
+    fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/peak_scale,style='cc',fill = 'orange',pen='black',
+            transparency=0,label='wrt Epi')
+    fig.legend(position="jBR+o0.0c", box=False)
+    
+    #fig.plot(y=dist_rupture,x=peak_energy[:,0],size=peak_energy[:,3]/scale,style='cc',fill = 'blue',pen='black',
+    #        transparency=40)
 
 #########################################################################################################################################
 # Plotting Traces
 #########################################################################################################################################
 
     fig.basemap(region=[0, STF_end+10, -1, len(stream_for_bp)], projection="X?", \
-                frame=["x+lTime (s)", "y+lTrace"], panel=[0, 1],)
+                frame=["WSne","x+lTime (s)", "y+lTrace"],  panel=[0, 1],)
     count=0
-    for tr in stream_for_plot:
+    for tr in stream_for_bp:
         count=count+1
         if tr.stats.station == ref_trace.stats.station:
             #arrival=source[i][3]+tr[0].stats.Corr_shift
