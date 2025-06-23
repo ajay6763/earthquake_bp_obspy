@@ -27,6 +27,17 @@ from mpl_toolkits.basemap import Basemap
 from obspy.imaging.beachball import beach
 import numpy as np
 ########### 
+def detrend_stream(stream,type='dmean'):
+    """
+    Detrend the stream traces
+    Input
+    """
+    for tr in stream:
+        if tr.stats['npts'] > 0:
+            tr.detrend(type=type)
+        else:
+            print('Trace has no data, hence not detrending')
+    return stream
 def array_selection_plot(stream,event_lat,event_long,az_min,az_max,dist_min,dist_max,threshold_correlation,corr_window,bp_l,bp_u):
     fig, ax = plt.subplots(1, 2, sharex=False, sharey=False,figsize=(10,3))
     #map =  Basemap(projection='cyl', lon_0=event_long,lat_0=event_lat,

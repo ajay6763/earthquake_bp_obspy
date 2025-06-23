@@ -82,10 +82,18 @@ print('Exp:',name)
 print('Origin time:',origin_time)
 print('Long= %f Lat= %f Depth= %f' % (event_long,event_lat,event_depth))
 print('bp_low= %f bp_high= %f Correlation threshold= %f SNR= %f'% (bp_l,bp_u,threshold_correlation,SNR))
+filter='on'
+if bp_l<0 or bp_u<0:
+    print('NOTE!! : will not filter the waveforms before stacking. The beam will be unfiltered.')
+    filter='off'
+else:
+    filter='on'
 print('#############################################################################\n')
 print('Done loading data.')
 print('Total time taken:',time.process_time() - time_start)
 print('Now gathering stream information..')
+### removing mean from the traces
+stream_for_bp= bp_lib.detrend_stream(stream_for_bp,type='dmean')
 stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
@@ -135,7 +143,12 @@ def process_beam(j):
     stream_use=stream_source.copy()
     stack=[]
     for tr in stream_use:
-        tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+        if filter=='on':
+            tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+        else:
+            pass
+        tr.integrate()
+        tr.detrend(type='dmean')
         cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
     return np.sum(stack,axis=0)
@@ -159,6 +172,7 @@ if __name__ == '__main__':
     print("Now to plot run the following: ")  
     print()
     print("python bp_post_process_make_results.py", outdir)  
+    print()
     print("You can also pass the frequency band other than in the input file but you should have the beam made for that.")  
 
 

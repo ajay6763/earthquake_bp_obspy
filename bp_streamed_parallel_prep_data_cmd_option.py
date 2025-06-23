@@ -13,20 +13,6 @@ from joblib import Parallel, delayed
 import obspy.geodetics
 import multiprocessing as mp
 
-def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, model):
-    '''
-    This function write the source grid  and associated travel times to the stations
-    in an array.
-    '''
-    source_stream_info = []
-    for t in stream_for_bp:
-        distance = obspy.geodetics.locations2degrees(slat[j], slong[j], t.stats.station_latitude, t.stats.station_longitude)
-        arrivals = model.get_travel_times(source_depth_in_km=event_depth, distance_in_degree=distance, phase_list=["P"])
-        arr = arrivals[0]
-        t_travel = arr.time
-        t_total = origin_time + t_travel #+ t.stats.Corr_shift
-        source_stream_info.append([slat[j], slong[j],t.stats.station,t_total])
-    return source_stream_info
 
 def process_location(j, slat, slong, stream_for_bp, event_depth, origin_time, model):
     '''
@@ -59,7 +45,7 @@ def process_beam(j):
     return np.sum(stack,axis=0)
 def main(argv):
     time_start = time.time()
-    num_cores = int(12);root_order = int(2);corr_window=float(20);snr_window=float(20);extra_label=str('')
+    num_cores = int(1);root_order = int(2);corr_window=float(20);snr_window=float(20);extra_label=str('')
     print('\n###########################################################################################')
     print(' Welcome for help run this script with -h option\n')
     try:
@@ -278,7 +264,7 @@ def main(argv):
     ##################################################################################
     path = os.getcwd()
     Exp_name=str(Array_name)+'_'+str(event_depth)+'km_'+str(res['model'])+'_'+str(res['threshold_correlation'])\
-        +'_corr_'+str(source_grid_size)+'_grid'+str(extra_label)
+        +'_corr_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_grid'+str(extra_label)
     outdir = str(Event)+'_'+str(Exp_name)
     print('Working in Exp:',outdir)
     isExist = os.path.exists(outdir)
@@ -325,6 +311,10 @@ def main(argv):
     stream_work = bp_lib.check_azimuth(stream_work,azimuth_min,azimuth_max)
     print('Total no of traces after azimuth criteria:', len(stream_work))
   
+    ######### removing mean
+    print('Total no of traces before removing mean:', len(stream_work))
+    stream_work= bp_lib.detrend_stream(stream_work,tyep='dmean')
+    print('Total no of traces after removing mean:', len(stream_work))
     ##########################################################################
     # CUtting before and after P arrival 
     ##########################################################################
