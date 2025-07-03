@@ -27,6 +27,49 @@ from mpl_toolkits.basemap import Basemap
 from obspy.imaging.beachball import beach
 import numpy as np
 ########### 
+
+def stream_info(stream_in):
+    '''
+    retunrs stream info:sta,sta_lat,sta_long,dist,azimuth
+    '''
+    sta = []
+    sta_lat = []
+    sta_long = []
+    dist = []
+    azimuth = []
+    #backazimuth = []
+    for tr in stream_in:
+        sta_long.append(tr.stats.station_longitude)
+        sta_lat.append(tr.stats.station_latitude)
+        dist.append(tr.stats.Dist)
+        azimuth.append(tr.stats.Azimuth)
+        #backazimuth.append(tr.stats.Backazimuth)
+    #to_save = np.column_stack((to_save,backazimuth))
+    #np.save('array_bp_info',to_save,allow_pickle=True)
+    return sta,sta_lat,sta_long,dist,azimuth
+def get_stream_stack(stream_in,model,event_depth,origin_time):
+    '''
+    Retunrs stack of the stream as a trace to be used as reference.
+    '''
+    sta,sta_lat,sta_long,sta_dist,sta_azimuth=stream_info(stream_in)
+    temp=stream_in.copy()
+    stack_tr=temp.stack()[0]
+    stack_tr.stats['Dist']              = np.mean(sta_dist)
+    stack_tr.stats['Azimuth']           = np.mean(sta_azimuth)
+    stack_tr.stats['station_latitude']  = np.mean(sta_lat)
+    stack_tr.stats['station_longitude'] = np.mean(sta_long)
+    stack_tr.stats['origin_time']       = origin_time
+    arrivals                     = model.get_travel_times(source_depth_in_km=event_depth,distance_in_degree=stack_tr.stats.Dist,
+                                                          phase_list=["P"])
+    arr                          = arrivals[0]
+    t_travel                     = arr.time;
+    stack_tr.stats['P_arrival']         = origin_time + t_travel 
+    stack_tr.stats['channel']=stream_in[-1].stats['channel']
+    stack_tr.stats['sampling_rate']=stream_in[-1].stats['sampling_rate']
+    stack_tr.stats['starttime']=stream_in[-1].stats['starttime']
+    ref_trace=stack_tr
+    return ref_trace
+
 def detrend_stream(stream,type='dmean'):
     """
     Detrend the stream traces
@@ -575,7 +618,7 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,
             print('Could not cross-correlate! Hence remove this waveform.')
             stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_before,time_after,max_lag,corr_thresh):
+def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,corr_thresh):
     '''
     This function cross-correlates traces around P arrival in an obspy stream with a reference trace.
     It also removes traces that have correlation coefficient less an input threshold
@@ -610,6 +653,74 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_before,time_after,max
             print('Could not cross-correlate! Hence remove this waveform.')
             stream.remove(tr)
     return stream
+
+def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,corr_thresh):
+    '''
+    This function cross-correlates traces at a point specified by a time starting from the start of the trace
+    from the  in an obspy stream with a reference trace.
+    It also removes traces that have correlation coefficient less an input threshold
+    Note: traces are not filtered before cross-correlation
+
+    Input:
+    stream : obspy stream
+    ref_trace : reference trace in the stream
+    time_start : time after the startime of the trace
+    time_before : time before P arrival i.e., corr window
+    time_after : time after P arrival,i.e., corr window
+    max_lag : maximum lag for cross-correlation 
+    corr_thresh : correlation value below which traces are removed.
+
+    '''
+    for tr in stream:
+        try:
+            shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
+                t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+            if (abs(value) >= corr_thresh):
+                tr.stats['Corr_coeff'] = value
+                tr.stats['Corr_shift']  = shift
+                tr.stats['Corr_sign']  = 1.0
+            else:
+                print('Could not cross-correlate! Hence remove this waveform.')
+                stream.remove(tr)
+        except:
+            print('Could not cross-correlate! Hence remove this waveform.')
+            stream.remove(tr)
+    return stream
+
+def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
+    '''
+    This function cross-correlates traces at a point specified by a time starting from the start of the trace
+    from the  in an obspy stream with a reference trace.
+    It also removes traces that have correlation coefficient less an input threshold
+    Note: traces are not filtered before cross-correlation
+
+    Input:
+    stream : obspy stream
+    ref_trace : reference trace in the stream
+    time_start : time after the startime of the trace
+    time_before : time before P arrival i.e., corr window
+    time_after : time after P arrival,i.e., corr window
+    max_lag : maximum lag for cross-correlation 
+    corr_thresh : correlation value below which traces are removed.
+
+    '''
+    for tr_ in stream:
+        try:
+            tr=tr_.copy() # working with a copy not change the data
+            shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
+                t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+            if (abs(value) >= corr_thresh):
+                tr_.stats['Corr_coeff'] = value
+                tr_.stats['Corr_shift']  = shift
+                tr_.stats['Corr_sign']  = 1.0
+            else:
+                stream.remove(tr_)
+        except:
+            print('Could not cross-correlate! Hence remove this waveform.')
+            stream.remove(tr_)
+    return stream
+
+
 def snr_calc(tr, noise_window, signal_window):
     """
     """

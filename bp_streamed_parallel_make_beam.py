@@ -93,7 +93,7 @@ print('Done loading data.')
 print('Total time taken:',time.process_time() - time_start)
 print('Now gathering stream information..')
 ### removing mean from the traces
-stream_for_bp= bp_lib.detrend_stream(stream_for_bp,type='dmean')
+stream_for_bp= bp_lib.detrend_stream(stream_for_bp,type='demean')
 stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
@@ -148,8 +148,10 @@ def process_beam(j):
         else:
             pass
         tr.integrate()
-        tr.detrend(type='dmean')
-        cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
+        tr.detrend(type='demean')
+        tr.normalize()
+        #cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
+        cut = tr.data*tr.stats.Corr_coeff/tr.stats.Station_weight
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
     return np.sum(stack,axis=0)
 

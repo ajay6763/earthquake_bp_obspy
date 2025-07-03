@@ -311,10 +311,6 @@ def main(argv):
     stream_work = bp_lib.check_azimuth(stream_work,azimuth_min,azimuth_max)
     print('Total no of traces after azimuth criteria:', len(stream_work))
   
-    ######### removing mean
-    print('Total no of traces before removing mean:', len(stream_work))
-    stream_work= bp_lib.detrend_stream(stream_work,tyep='dmean')
-    print('Total no of traces after removing mean:', len(stream_work))
     ##########################################################################
     # CUtting before and after P arrival 
     ##########################################################################
@@ -322,6 +318,11 @@ def main(argv):
     print('Total no of traces before data gap checks:', len(stream_work))
     stream_work=bp_lib.stream_cut_P_arrival_normalize(stream_work,Start_P_cut_time,End_P_cut_time)
     print('Total no of traces after cutting and data gap checks ', len(stream_work))
+    
+    ######### removing mean
+    print('Total no of traces before removing mean:', len(stream_work))
+    stream_work= bp_lib.detrend_stream(stream_work,type='demean')
+    print('Total no of traces after removing mean:', len(stream_work))
     
     ######### SNR check
     print('Total no of traces before  SNR criteria:', len(stream_work))
@@ -335,21 +336,31 @@ def main(argv):
     ##########################################################################
     Ref_station_index=bp_lib.get_ref_station(stream_work)
     ref_trace = stream_work[Ref_station_index]
-    print('Total no of traces before Cross-correlation:', len(stream_work))
-    print('Performning cross-correlation. Without filtering')
-    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
-                                                        ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    #temp=stream_work.copy()
+    #for tr in stream_work:
+    #    tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+    #ref_trace=bp_lib.get_stream_stack(stream_work,model,event_depth,origin_time)
+    #ref_trace.detrend(type='demean')
+    #ref_trace.normalize()
+    #print('Total no of traces before Cross-correlation:', len(stream_work))
+    #print('Performning cross-correlation. Without filtering')
+    #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,threshold_correlation)
+    #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
+    #                                          bp_l,bp_u,threshold_correlation)
+    
+    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
     #                                                    threshold_correlation)
     print('Total no of traces after Cross-correlation:', len(stream_work))
     ##########################################################################
     # cross-correlation
-    Ref_station_index=bp_lib.get_ref_station(stream_work)
-    ref_trace = stream_work[Ref_station_index]
-    print('Total no of traces before Cross-correlation:', len(stream_work))
-    print('Performning cross-correlation. Without filtering')
-    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
-                                                        ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    #Ref_station_index=bp_lib.get_ref_station(stream_work)
+    #ref_trace = stream_work[Ref_station_index]
+    #print('Total no of traces before Cross-correlation:', len(stream_work))
+    #print('Performning cross-correlation. Without filtering')
+    #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
+    #                                                    ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,\
     #                                                    ref_trace,corr_window,corr_window,corr_window,
     #                                                    bp_l,bp_u,

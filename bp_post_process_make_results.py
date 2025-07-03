@@ -63,7 +63,7 @@ except:
 stack_start         = int(res['stack_start'])   #in seconds
 stack_end           = int(res['stack_end'])  #in seconds
 STF_start           = int(res['STF_start'])
-STF_end             = 100 #int(res['STF_end'])
+STF_end             = int(res['STF_end'])
 sps                 = int(res['sps'])  #samples per seconds
 corr_window         = int(res['corr_window'])
 threshold_correlation=float(res['threshold_correlation'])
@@ -106,8 +106,8 @@ source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
 source_grid_extend_y  = float(res['source_grid_extend_y']) 
 source_depth_size   = float(res['source_depth_size']) #km
 source_depth_extend = float(res['source_grid_extend']) #km
-smooth_time_window  = 1 #int(res['smooth_time_window'])   #seconds
-smooth_space_window = 1 #int(4/source_grid_size) #source_grid_size  #int(res['smooth_space_window'])
+smooth_time_window  = 10 #np.int16(4/bp_l)#int(res['smooth_time_window'])   #seconds
+smooth_space_window = 10 #int(res['smooth_space_window']) #source_grid_size  #int(res['smooth_space_window'])
 #stream_for_bp=obspy.read('./Turky_7.6_all/stream.mseed')
 #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
 slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
@@ -137,26 +137,26 @@ print('Done loading data')
 # Preparing the beam i.e. getting the power
 # Smoothening the beam
 #beam_use=np.zeros((len(slat),(stack_end-stack_start)*sps-1))
-beam_smoothened_=np.zeros_like(beam)
+beam_use=beam.copy()
+beam_use=np.square(beam_use)
+beam_smoothened_=beam_use.copy()
 m,n=np.shape(beam_smoothened_)
+#time by looing through space grid
+for i in range(m):
+    beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
 #space
-for i in range(m):
-    beam_smoothened_[:][i]=bp_lib.moving_average(beam[:][i],smooth_space_window)
-#time
-for i in range(m):
-    beam_smoothened_[i][:]=bp_lib.moving_average(beam[i][:],smooth_time_window*sps)
-#beam_smoothened=beam_smoothened/np.max(beam_smoothened)
-beam_smoothened=np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
+for i in range(n):
+    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
+beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) 
 print('Maximum energy of the beam:',np.max(beam_smoothened))
 #plt.plot(moving_average(beam_reshaped[:][10],10*sps))
 
 ################################
 # getting the STF
-stf_beam      = np.sum(beam_smoothened,axis=0)
+stf_beam      = np.sum(beam,axis=0)
 print('Size of STF:', np.shape(stf_beam))
 #Taking square becaouse we are interested in the power
-#stf_beam=stf_beam**2
-#stf_beam=stf_beam[stack_start*sps:(stack_end)*sps]
+stf_beam=stf_beam**2
 stf_beam=stf_beam[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
 
 stf_beam=stf_beam/np.max(stf_beam)

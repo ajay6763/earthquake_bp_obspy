@@ -75,12 +75,12 @@ except:
     bp_l                = float(res['bp_l']) #Hz
     bp_u                = float(res['bp_u'])   #Hz
 '''
-bp_l=0.1
-bp_u=2.0
+bp_l=0.25
+bp_u=2.5
 #bp_l                = float(res['bp_l']) #Hz
 #bp_u                = float(res['bp_u'])   #Hz
-smooth_time_window  = 1 #int(res['smooth_time_window'])   #seconds
-smooth_space_window = 1 #int(res['smooth_space_window'])
+smooth_time_window  = 10 #int(res['smooth_time_window'])   #seconds
+smooth_space_window = 150 #int(res['smooth_space_window'])
 stack_start         = int(res['stack_start'])   #in seconds
 stack_end           = int(res['stack_end'])  #in seconds
 STF_start           = int(res['STF_start'])
@@ -191,24 +191,23 @@ beam_sum = np.sum(beam_all_shifted,axis=0)
 
 stack_end=STF_end
 stack_start=STF_start # stack start is at 0 because individaul arrays are already shited based on stack_start
-beam_use=np.copy(beam_sum)
-beam_smoothened_=np.zeros_like(beam_sum)
+beam_use=np.square(beam_sum)
+beam_smoothened_=np.zeros_like(beam_use)
 m,n=np.shape(beam_smoothened_)
+#time by looing through space grid
+for i in range(m):
+    beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
 #space
-for i in range(m):
-    beam_smoothened_[:][i]=bp_lib.moving_average(beam_use[:][i],smooth_space_window)
-#time
-for i in range(m):
-    beam_smoothened_[i][:]=bp_lib.moving_average(beam_use[i][:],smooth_time_window*sps)
-#beam_smoothened=beam_smoothened/np.max(beam_smoothened)
-beam_smoothened=np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
+for i in range(n):
+    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
+beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) #np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
 print('Maximum energy of the beam:',np.max(beam_smoothened))
 ################################
 # getting the STF
-stf_beam      = np.sum(beam_smoothened,axis=0)
+stf_beam      = np.sum(beam_use,axis=0)
 print('Size of STF:', np.shape(stf_beam))
 #Taking square becaouse we are interested in the power
-#stf_beam=stf_beam**2
+stf_beam=stf_beam**2
 #stf_beam=stf_beam[stack_start*sps:(stack_end)*sps]
 stf_beam=stf_beam[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
 
@@ -216,7 +215,7 @@ stf_beam=stf_beam/np.max(stf_beam)
 print('Size of STF:', np.shape(stf_beam))
 stf_beam=np.column_stack((stf_beam,range(len(stf_beam))))
 stf_beam[:,1]=stf_beam[:,1]/sps
-file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_grid'+'.dat'
 np.savetxt(outdir+'/'+file_save,stf_beam,header='energy(normalized) time(s) ')  
 ###########################################
 # Cumulative energy
@@ -231,7 +230,7 @@ cumulative_energy[:,2]=temp/np.max(temp)
 cumulative_energy[:,0]=slong
 cumulative_energy[:,1]=slat
 cumulative_energy[:,2]=cumulative_energy[:,2]/np.max(cumulative_energy[:,2])
-file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.dat'
 np.savetxt(outdir+'/'+file_save,cumulative_energy,header='long lat energy(normalized)')
 print('Maximum energy of the cumulative energy:',np.max(cumulative_energy[:,2]))
 ############################################################
@@ -264,7 +263,7 @@ peak_energy=np.column_stack((peak_energy,dist_rupture))
 peak_energy=np.column_stack((peak_energy,dist_rupture2))
 peak_energy=np.column_stack((peak_energy,np.cumsum(dist_rupture2)))
 
-file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.dat'
 np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
 plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='violet',
             label='w.r.t peak t=0',marker='o',edgecolors='black')
@@ -279,7 +278,7 @@ plt.ylabel('tim (s)')
 plt.legend()
 plt.colorbar()
 #plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
-plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_combined_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'.png')
+plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_combined_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.png')
 
 #plt.savefig(outdir+'/'+str(name)+'_Rupture_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.png')
 
@@ -402,7 +401,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
         ref_trace=stream_for_bp[Ref_station_index]
         #stream_for_bp.copy()
         for tr in stream_for_bp:
-            #tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
+            tr.filter('bandpass',freqmin=bp_l,freqmax=bp_u)
             st_time=tr.stats['P_arrival']+tr.stats['Corr_shift']-5
             end_time=st_time+stack_end
             tr.trim(st_time,end_time)
@@ -454,7 +453,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     #fig.plot(x=sta_long,y=sta_lat,style='t0.2',fill = 'red',pen='black',)
     #fig.plot(x=sta_long[Ref_station_index],y=sta_lat[Ref_station_index],\
     #         style= 't0.2',fill = 'blue',pen='black',)
-fig.savefig(outdir+'/T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_combined_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'.png',dpi=300)
+fig.savefig(outdir+'/T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_combined_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.png',dpi=300)
 fig.show()
 #fig.savefig(outdir+'/'+'T_Summary_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_T'+str(smooth_time_window)+'_Space'+str(smooth_space_window)+'.png',dpi=300)
 
