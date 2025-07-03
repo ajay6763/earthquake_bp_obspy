@@ -66,7 +66,6 @@ for i in range(len(keys)):
 #################################################################
 # bp info
 ## BP parameters from the input file
-'''
 try:
     bp_l = sys.argv[2]
     bp_u = sys.argv[3]
@@ -74,9 +73,6 @@ try:
 except:
     bp_l                = float(res['bp_l']) #Hz
     bp_u                = float(res['bp_u'])   #Hz
-'''
-bp_l=0.25
-bp_u=2.5
 #bp_l                = float(res['bp_l']) #Hz
 #bp_u                = float(res['bp_u'])   #Hz
 smooth_time_window  = 10 #int(res['smooth_time_window'])   #seconds
