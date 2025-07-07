@@ -145,18 +145,18 @@ m,n=np.shape(beam_smoothened_)
 for i in range(m):
     beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
 #space
-for i in range(n):
-    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
+#for i in range(n):
+#    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
 beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) 
 print('Maximum energy of the beam:',np.max(beam_smoothened))
 #plt.plot(moving_average(beam_reshaped[:][10],10*sps))
 
 ################################
 # getting the STF
-stf_beam      = np.sum(beam,axis=0)
+stf_beam      = np.sum(beam_use,axis=0)
 print('Size of STF:', np.shape(stf_beam))
 #Taking square becaouse we are interested in the power
-stf_beam=stf_beam**2
+#stf_beam=np.square(stf_beam)
 stf_beam=stf_beam[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
 
 stf_beam=stf_beam/np.max(stf_beam)

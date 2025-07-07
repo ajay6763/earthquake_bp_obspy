@@ -70,7 +70,7 @@ def get_stream_stack(stream_in,model,event_depth,origin_time):
     ref_trace=stack_tr
     return ref_trace
 
-def detrend_stream(stream,type='dmean'):
+def detrend_normalize_stream(stream,type='dmean'):
     """
     Detrend the stream traces
     Input
@@ -78,6 +78,7 @@ def detrend_stream(stream,type='dmean'):
     for tr in stream:
         if tr.stats['npts'] > 0:
             tr.detrend(type=type)
+            tr.normalize()
         else:
             print('Trace has no data, hence not detrending')
     return stream
@@ -313,6 +314,31 @@ def stream_cut_P_arrival_normalize(stream,cut_start,cut_end):
         else:
             t.normalize()
     return stream
+def stream_cut_P_arrival(stream,cut_start,cut_end):
+    '''
+    This function cuts the traces in a stream relative to P_arrival
+    with a window in seconds before and after and normalizes the amplitude.
+    It also checks if the trimed trace has expected lenght if not then the trace
+    is removed
+    
+    Input:
+    stream : obspy stream with P_arrivals
+    cut_start : cut before P arrival
+    cut_end :m cut after P arrival
+
+    Output:
+    stream : obspy stream
+    '''
+    print('Total no of traces before data gap checks:', len(stream))
+    for t in stream:
+        t.trim(t.stats['P_arrival']-cut_start,t.stats['P_arrival']+cut_end)
+        if t.stats.npts < (cut_start+cut_end)/t.stats.delta:
+            stream.remove(t)
+        else:
+            pass
+    return stream
+
+
 def stream_station_weight(stream,distance_thresh=1.0):
     '''
     This function computes stations weights in an array
@@ -527,6 +553,7 @@ def crosscorr_prev(t1_trace,t2_trace,window):
     sps=int(t1_trace.stats['sampling_rate'])
     #cc=obspy.signal.cross_correlation.correlate(t1_trace[ref_st:ref_end],t2_trace[st:end],demean=True,normalize='naive',method='auto',shift=window*sps)
     cc=obspy.signal.cross_correlation.correlate(t1_trace,t2_trace,demean=True,normalize='naive',method='auto',shift=window*sps)
+    
     shift, value = obspy.signal.cross_correlation.xcorr_max(cc)
     if (value < 0):
             sign=-1;
@@ -534,11 +561,49 @@ def crosscorr_prev(t1_trace,t2_trace,window):
             sign=1;
 
     return abs(value),shift/sps,sign
-def crosscorr_stream_prev(stream,ref_trace,window):
+def crosscorr_template(t1_trace,t2_trace,window):
+    '''
+
+    '''
+    sps=int(t1_trace.stats['sampling_rate'])
+    #cc=obspy.signal.cross_correlation.correlate(t1_trace[ref_st:ref_end],t2_trace[st:end],demean=True,normalize='naive',method='auto',shift=window*sps)
+    #cc=obspy.signal.cross_correlation.correlate(t1_trace,t2_trace,demean=True,normalize='naive',method='auto',shift=window*sps)
+    cc=obspy.signal.cross_correlation.correlate_template(t1_trace,t2_trace,demean=True,
+                                                         normalize='full',method='auto',shift=window*sps)
+    
+    shift, value = obspy.signal.cross_correlation.xcorr_max(cc)
+    if (value < 0):
+            sign=-1;
+    else:
+            sign=1;
+
+    return abs(value),shift/sps,sign
+def crosscorr_stream_prev(stream,ref_trace,window,corr_thresh=0.5):
     '''
     '''
     for tr in stream:
         corr,shift,sign = crosscorr_prev(ref_trace,tr,window)
+        if np.abs(corr)>=corr_thresh:
+            tr.stats['Corr_coeff'] = corr
+            tr.stats['Corr_shift']  = shift
+            if corr<0:
+                tr.stats['Corr_sign']  = -1.0
+            else: 
+                tr.stats['Corr_sign']  = 1.0
+        else:
+            stream.remove(tr)
+        #try:
+        #    corr,shift,sign = crosscorr_prev(ref_trace,tr,window)
+        #    if np.abs(corr)>=corr_thresh:
+        #        #tr.stats['Corr_coeff'] = corr
+        #        tr.stats['Corr_shift']  = shift
+        #        if corr<0:
+        #            tr.stats['Corr_sign']  = -1.0
+        #        else:
+        #            tr.stats['Corr_sign']  = 1.0
+        #    else:
+        #        stream.remove(tr)
+
         tr.stats['Corr_coeff'] = corr
         tr.stats['Corr_shift']  = shift
         tr.stats['Corr_sign']  = sign
@@ -589,13 +654,16 @@ def crosscorr_stream(stream,ref_trace,window):
         if message=='ok':
             tr.stats['Corr_coeff'] = corr
             tr.stats['Corr_shift']  = shift
-            tr.stats['Corr_sign']  = sign
+            if value<0:
+                tr.stats['Corr_sign']  = -1.0
+            else: 
+                tr.stats['Corr_sign']  = 1.0
         else:
             stream.remove(tr)
         #except:
         #    stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
+def crosscorr_stream_xcorr_P_arrival(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
     '''
     '''
     for tr in stream:
@@ -611,7 +679,10 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,
             if (abs(value) >= corr_thresh):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
-                tr.stats['Corr_sign']  = 1.0
+                if value<0:
+                    tr.stats['Corr_sign']  = -1.0
+                else: 
+                    tr.stats['Corr_sign']  = 1.0
             else:
                 stream.remove(tr)
         except:
@@ -646,7 +717,10 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
             if (abs(value) >= corr_thresh):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
-                tr.stats['Corr_sign']  = 1.0
+                if value<0:
+                    tr.stats['Corr_sign']  = -1.0
+                else: 
+                    tr.stats['Corr_sign']  = 1.0
             else:
                 stream.remove(tr)
         except:
@@ -678,7 +752,10 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,tim
             if (abs(value) >= corr_thresh):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
-                tr.stats['Corr_sign']  = 1.0
+                if value<0:
+                    tr.stats['Corr_sign']  = -1.0
+                else: 
+                    tr.stats['Corr_sign']  = 1.0
             else:
                 print('Could not cross-correlate! Hence remove this waveform.')
                 stream.remove(tr)

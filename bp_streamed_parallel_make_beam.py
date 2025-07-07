@@ -93,7 +93,7 @@ print('Done loading data.')
 print('Total time taken:',time.process_time() - time_start)
 print('Now gathering stream information..')
 ### removing mean from the traces
-stream_for_bp= bp_lib.detrend_stream(stream_for_bp,type='demean')
+stream_for_bp= bp_lib.detrend_normalize_stream(stream_for_bp,type='demean')
 stream_for_bp=bp_lib.populate_stream_info(stream_for_bp,stream_info,origin_time,event_depth,model)
 Ref_station_index=bp_lib.get_ref_station(stream_for_bp)
 ref_trace = stream_for_bp[Ref_station_index]
@@ -138,7 +138,7 @@ def process_beam(j):
     stream_source=stream_for_bp.copy()
     for i in range(len(source)):
         tr = stream_source.select(station=source[i][2])
-        arrival=source[i][3]+tr[0].stats.Corr_shift
+        arrival=source[i][3]+tr[0].stats.Corr_shift #+2.5
         tr.trim(arrival-stack_start,arrival+stack_end)
     stream_use=stream_source.copy()
     stack=[]
@@ -150,8 +150,9 @@ def process_beam(j):
         tr.integrate()
         tr.detrend(type='demean')
         tr.normalize()
-        #cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
-        cut = tr.data*tr.stats.Corr_coeff/tr.stats.Station_weight
+        cut = tr.data/np.max(np.abs(tr.data)) * tr.stats.Corr_coeff/tr.stats.Station_weight
+        #cut = tr.data #/tr.stats.Station_weight
+        #cut = tr.data*tr.stats.Corr_coeff/tr.stats.Station_weight
         stack.append(cut[0:int((stack_start+stack_end)*sps)])
     return np.sum(stack,axis=0)
 
