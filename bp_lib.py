@@ -1068,6 +1068,58 @@ def make_source_grid_3D(event_long,event_lat,source_grid_extend,source_grid_size
                 slat.append(y[j])
                 sdepth.append(z[k])
     return slong,slat,sdepth
+    
+#make source_grid along_strike requires two helping functions
+def strike_coords(strike, event_lat, event_long,extend):
+    y_dist=extend * (np.cos(np.deg2rad(strike)))
+    new_lat= event_lat + (y_dist/111.1)
+    x_dist=extend * (np.sin(np.deg2rad(strike)))
+    denom = 111.32 * np.cos(np.deg2rad(event_lat))
+    if np.abs(denom) < 1e-2:    #No reliable longitude change, would result in unsuitable values
+        new_long = event_long 
+    else:
+        new_long = event_long + (x_dist / denom)
+    
+    return new_lat, new_long
+def eqspaced_points_list(strike, event_lat, event_long, extend, grid_size):
+    lat_long_list=[]
+    spacing=np.arange(grid_size,extend+grid_size, grid_size)
+    
+    for i in spacing:
+        lat_long_list.append(strike_coords(strike, event_lat, event_long, -i))
+    lat_long_list.append(strike_coords(strike, event_lat, event_long, 0))
+    for j in spacing:
+        lat_long_list.append(strike_coords(strike, event_lat, event_long, j))
+    
+    return lat_long_list
+
+
+def make_source_grid_along_strike(strike, event_lat, event_long, x_extend, y_extend, grid_size_km_spacing):
+
+    '''The main differences in this function from the previous make_source_grid_hetero are
+    1)This function orients the source grid along the strike direction
+    2)This function has its x and y extends in Kms, rather than in degrees. although 
+    there can be a 
+    3)The grid points are placed in equivalent extends, which are given in kilometers. 
+    modification made so that we can input in degrees rather than in kilometers
+    '''
+    
+    grid_list=[]
+    temp=[]
+    strike_perpendicular = (strike + 90) % 360
+    strike_perpendicular_list=eqspaced_points_list(strike_perpendicular, event_lat, event_long, y_extend, grid_size_km_spacing)
+    for i in strike_perpendicular_list:
+        temp=eqspaced_points_list(strike, i[0], i[1], x_extend, grid_size_km_spacing)
+        grid_list.append(temp)
+        temp=[]
+    slat=[]
+    slong=[]
+    slat = [coord[0] for row in grid_list for coord in row]
+    slong= [coord[1] for row in grid_list for coord in row]
+    return slong, slat 
+ 
+   
+ 
 def check_sps(stream,sps):
     '''
     This function checks if all the waveform data has 20 SPS. At the moment it can detect
