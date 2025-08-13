@@ -16,8 +16,6 @@ def calculate_shear_mach_front_angle(super_shear_velocity):
     shear_mach_front_angle = math.degrees(math.asin(sin_shear_mach_front_angle))
     return shear_mach_front_angle
 
-
-
 #name='KYR_7.0_EU_13.0km_iasp91_0.2_grid_'
 try:
     name = sys.argv[1]
@@ -106,8 +104,8 @@ source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
 source_grid_extend_y  = float(res['source_grid_extend_y']) 
 source_depth_size   = float(res['source_depth_size']) #km
 source_depth_extend = float(res['source_grid_extend']) #km
-smooth_time_window  = 10 #np.int16(4/bp_l)#int(res['smooth_time_window'])   #seconds
-smooth_space_window = 10 #int(res['smooth_space_window']) #source_grid_size  #int(res['smooth_space_window'])
+smooth_time_window  = int(res['smooth_time_window'])   #seconds
+smooth_space_window = int(res['smooth_space_window']) #source_grid_size  #int(res['smooth_space_window'])
 #stream_for_bp=obspy.read('./Turky_7.6_all/stream.mseed')
 #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
 slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
@@ -143,12 +141,20 @@ beam_smoothened_=beam_use.copy()
 m,n=np.shape(beam_smoothened_)
 #time by looing through space grid
 for i in range(m):
-    beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
+    beam_smoothened_[i,:]=bp_lib.moving_average(beam_smoothened_[i,:],smooth_time_window*sps)
+    #beam_smoothened_[i,:]=moving_average(beam_smoothened_[i,:],smooth_time_window*sps)
+    #beam_smoothened_[i,:]=gaussian_space_smoothennig_1D(beam_smoothened_[i,:],smooth_time_window*sps)
 #space
-#for i in range(n):
-#    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
+x=np.arange(event_long-source_grid_extend_x,event_long+source_grid_extend_x,source_grid_size)
+y=np.arange(event_lat-source_grid_extend_y,event_lat+source_grid_extend_y,source_grid_size)
+for i in range(n):
+    x_size=smooth_space_window
+    y_size=smooth_space_window
+    signal=beam_smoothened_[:,i].reshape((len(x),len(y)))
+    #beam_smoothened_[:,i]=gaussian_space_smoothennig_2D(signal,x_size,y_size)
+    beam_smoothened_[:,i]=bp_lib.box_space_smoothennig(signal,x_size,y_size)
 beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) 
-print('Maximum energy of the beam:',np.max(beam_smoothened))
+
 #plt.plot(moving_average(beam_reshaped[:][10],10*sps))
 
 ################################
@@ -212,7 +218,7 @@ peak_energy=np.column_stack((peak_energy,dist_rupture2))
 peak_energy=np.column_stack((peak_energy,np.cumsum(dist_rupture2)))
 
 file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
-np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
+np.savetxt(outdir+'/'+file_save,peak_energy,header='#time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
 plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='violet',
             label='w.r.t peak t=0',marker='o',edgecolors='black')
 plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='orange',

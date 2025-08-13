@@ -66,25 +66,24 @@ for i in range(len(keys)):
 #################################################################
 # bp info
 ## BP parameters from the input file
-'''
+
 try:
-    bp_l = sys.argv[2]
-    bp_u = sys.argv[3]
+    bp_l = sys.argv[-2]
+    bp_u = sys.argv[-1]
     print('bp_l and bp_u is,',(bp_l,bp_u))
 except:
     bp_l                = float(res['bp_l']) #Hz
     bp_u                = float(res['bp_u'])   #Hz
-'''
-bp_l=0.25
+bp_l=0.5
 bp_u=2.5
 #bp_l                = float(res['bp_l']) #Hz
 #bp_u                = float(res['bp_u'])   #Hz
-smooth_time_window  = 10 #int(res['smooth_time_window'])   #seconds
-smooth_space_window = 150 #int(res['smooth_space_window'])
+smooth_time_window  = int(res['smooth_time_window'])   #seconds
+smooth_space_window = int(res['smooth_space_window'])
 stack_start         = int(res['stack_start'])   #in seconds
 stack_end           = int(res['stack_end'])  #in seconds
 STF_start           = int(res['STF_start'])
-STF_end             = 100 #int(res['STF_end'])
+STF_end             = 80 #int(res['STF_end'])
 sps                 = int(res['sps'])  #samples per seconds
 threshold_correlation=float(res['threshold_correlation'])
 SNR=float(res['SNR'])
@@ -121,7 +120,7 @@ for i in range(len(slat)):
 hypocentre_index=np.argmin(dist)
 print('Hypocenter index on the source grid:',hypocentre_index)
 ### Load reference array beam
-# Loading reference array
+### Load reference array beam
 ref_stations_file = str(res['stations'])
 beam_file='beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'.dat'
 print('Beam file in :',beam_file)
@@ -130,7 +129,6 @@ stream_info = np.load('./'+ref_array+'/array_bp_info.npy',allow_pickle=True)
 ref_stream_for_bp=obspy.read('./'+ref_array+'/stream.mseed') 
 stream_for_bp=bp_lib.populate_stream_info(ref_stream_for_bp,stream_info
                                           ,origin_time,event_depth,model)
-
 ### making master beam of size no_of_array,shape(beam): p,m,n
 m,n=np.shape(ref_array_beam)
 p=len(array_list)
@@ -191,59 +189,69 @@ beam_sum = np.sum(beam_all_shifted,axis=0)
 
 stack_end=STF_end
 stack_start=STF_start # stack start is at 0 because individaul arrays are already shited based on stack_start
-beam_use=np.square(beam_sum)
-beam_smoothened_=np.zeros_like(beam_use)
+######### combined beam
+beam_use=beam_sum.copy()
+beam_use=np.square(beam_use)
+beam_smoothened_=beam_use.copy()
 m,n=np.shape(beam_smoothened_)
 #time by looing through space grid
 for i in range(m):
-    beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
+    beam_smoothened_[i,:]=bp_lib.moving_average(beam_smoothened_[i,:],smooth_time_window*sps)
+    #beam_smoothened_[i,:]=moving_average(beam_smoothened_[i,:],smooth_time_window*sps)
+    #beam_smoothened_[i,:]=gaussian_space_smoothennig_1D(beam_smoothened_[i,:],smooth_time_window*sps)
 #space
+x=np.arange(event_long-source_grid_extend_x,event_long+source_grid_extend_x,source_grid_size)
+y=np.arange(event_lat-source_grid_extend_y,event_lat+source_grid_extend_y,source_grid_size)
 for i in range(n):
-    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
-beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) #np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
+    x_size=smooth_space_window
+    y_size=smooth_space_window
+    signal=beam_smoothened_[:,i].reshape((len(x),len(y)))
+    #beam_smoothened_[:,i]=gaussian_space_smoothennig_2D(signal,x_size,y_size)
+    beam_smoothened_[:,i]=bp_lib.box_space_smoothennig(signal,x_size,y_size)
+beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) 
 print('Maximum energy of the beam:',np.max(beam_smoothened))
 ################################
 # getting the STF
-stf_beam      = np.sum(beam_use,axis=0)
+################################
+# getting the STF
+stf_beam      = np.sum(beam_smoothened,axis=0)
 print('Size of STF:', np.shape(stf_beam))
 #Taking square becaouse we are interested in the power
-stf_beam=stf_beam**2
+#stf_beam=stf_beam**2
 #stf_beam=stf_beam[stack_start*sps:(stack_end)*sps]
 stf_beam=stf_beam[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
-
 stf_beam=stf_beam/np.max(stf_beam)
 print('Size of STF:', np.shape(stf_beam))
 stf_beam=np.column_stack((stf_beam,range(len(stf_beam))))
 stf_beam[:,1]=stf_beam[:,1]/sps
-file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_grid'+'.dat'
-np.savetxt(outdir+'/'+file_save,stf_beam,header='energy(normalized) time(s) ')  
+file_save    = 'STF_beam_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+np.savetxt(outdir+'/'+file_save,stf_beam,header='#energy(normalized) time(s) ')  
+
 ###########################################
 # Cumulative energy
 beam_cumulative_use=beam_smoothened.T
-#temp     =np.sum(beam_cumulative_use[stack_start*sps:(stack_end)*sps],axis=0)
-temp     =np.sum(beam_cumulative_use[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps],axis=0)
-
+temp     =np.sum(beam_cumulative_use[stack_start*sps:(stack_end)*sps],axis=0)
+#temp     =np.sum(beam_cumulative_use[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps],axis=0)
 print('Size of the cumulative energy:',np.shape(temp))
 m,n=np.shape(beam_smoothened)
 cumulative_energy=np.zeros((m,3))
-cumulative_energy[:,2]=temp/np.max(temp)
+cumulative_energy[:,2]=temp #/np.max(temp)
 cumulative_energy[:,0]=slong
 cumulative_energy[:,1]=slat
 cumulative_energy[:,2]=cumulative_energy[:,2]/np.max(cumulative_energy[:,2])
-file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.dat'
-np.savetxt(outdir+'/'+file_save,cumulative_energy,header='long lat energy(normalized)')
+file_save='cumulative_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+np.savetxt(outdir+'/'+file_save,cumulative_energy,header='#long lat energy(normalized)')
 print('Maximum energy of the cumulative energy:',np.max(cumulative_energy[:,2]))
 ############################################################
 # peak energy points
-#beam_peak_energy_use=beam_smoothened.T[stack_start*sps:(stack_end)*sps]
 beam_peak_energy_use=beam_smoothened.T[(stack_start+STF_start)*sps:(stack_start+STF_end)*sps]
-
 print('Maximum energy of the beam:',np.max(beam_peak_energy_use))
 m,n=np.shape(beam_peak_energy_use)
 peak_energy=np.zeros((int(m/sps),4))
 print('Size of the peak energy:',np.shape(peak_energy))
 for i in range(len(peak_energy)):
     ind              = np.argmax(beam_peak_energy_use[i*sps])
+    #ind              = np.argmax((beam_peak_energy_use[i*sps]/np.max(beam_peak_energy_use[i*sps])))
     peak_energy[i,0] = i
     peak_energy[i,1] = slong[ind]
     peak_energy[i,2] = slat[ind]
@@ -262,9 +270,8 @@ for i in range(len(dist_rupture)-1):
 peak_energy=np.column_stack((peak_energy,dist_rupture))
 peak_energy=np.column_stack((peak_energy,dist_rupture2))
 peak_energy=np.column_stack((peak_energy,np.cumsum(dist_rupture2)))
-
-file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_Ref_'+str(ref_array)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'_'+str(source_grid_extend_x)+'_X'+str(source_grid_extend_y)+'_Y'+str(source_grid_size)+'_g'+'.dat'
-np.savetxt(outdir+'/'+file_save,peak_energy,header='time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
+file_save='Peak_energy_'+str(bp_l)+'_'+str(bp_u)+'_'+str(Array_name)+'_'+str(smooth_time_window)+'_'+str(smooth_space_window)+'.dat'
+np.savetxt(outdir+'/'+file_save,peak_energy,header='#time(s) long lat energy(normalized) distance_wrt_epiceter(km) distance_peaks(km)')
 plt.scatter(x=dist_rupture2[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='violet',
             label='w.r.t peak t=0',marker='o',edgecolors='black')
 plt.scatter(x=dist_rupture[:], y=peak_energy[:,0],s=peak_energy[:,3]*100,c='orange',
@@ -312,7 +319,9 @@ with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     sharex=False,):
     energy_cmap=pygmt.makecpt(cmap="bilbao", reverse=False,series=[0.4, 1, 0.1])
     #df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
-    grd_ = pygmt.xyz2grd(x=cumulative_energy[:,0],y=cumulative_energy[:,1],z=cumulative_energy[:,2],region=region, spacing=spacing)
+    df = pygmt.blockmean(data=cumulative_energy, region=region, spacing=spacing)
+    #grd_ = pygmt.xyz2grd(x=cumulative_energy[:,0],y=cumulative_energy[:,1],z=cumulative_energy[:,2],region=region, spacing=spacing)
+    grd_ = pygmt.xyz2grd(df,region=region, spacing=spacing)
     grd = pygmt.grdsample(grd_,spacing=0.1)
     fig.basemap(region=region,projection=proj,frame=["wNsE","af"],)
     fig.grdimage(grid=grd,cmap=energy_cmap,projection=proj, region=region, \
@@ -322,9 +331,9 @@ with fig.subplot(nrows=1, ncols=1, figsize=figsize, autolabel="a)",
     fig.meca(spec=Focal_mech,projection=proj,region=region,scale="0.5c", longitude=event_long,
              latitude=event_lat,depth=event_depth,transparency=40,)
     peak_cmap=pygmt.makecpt(cmap="seis", series=[STF_start, STF_end,  10])
-    fig.plot(x=peak_energy[STF_start:STF_end,1],y=peak_energy[STF_start:STF_end,2],projection=proj,region=region, \
+    fig.plot(projection=proj,region=region,x=peak_energy[STF_start:STF_end,1],y=peak_energy[STF_start:STF_end,2], \
              fill=peak_energy[STF_start:STF_end,0],cmap=True, \
-         no_clip=True,size=peak_energy[STF_start:STF_end,3]/scale,style='cc', pen='0.5p,black',transparency=40,)
+         no_clip=False,size=peak_energy[STF_start:STF_end,3]/scale,style='sc', pen='0.5p,black',transparency=40,)
     #fig.plot(x=peak_energy[:,1],y=peak_energy[:,2],projection=proj,region=region, \
     #         fill=peak_energy[:,0],cmap=True, \
     #     no_clip=True,style='c0.1', pen='0.5p,black',transparency=40,)
@@ -352,7 +361,7 @@ with fig.subplot(nrows=2, ncols=2, figsize=figsize, autolabel="b)", frame="a",
     fig.basemap(region=[STF_start, STF_end, 0, 1], projection="X?", frame=["WSne"+str(title),"x+lTime (s)", "y+lAmplitude"], panel=[0, 0],
         )
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,black',)
-    fig.plot(x=stf_beam[:,1],y=stf_beam[:,0], pen='2p,black',frame=["af", "WSne"])
+    fig.plot(x=peak_energy[:,0],y=peak_energy[:,3], pen='2p,black',frame=["af", "WSne"])
     #fig.plot(x=STF_array[:,0],y=STF_array[:,1], pen='2p,red',)
 #########################################################################################################################################    
 # Plotting Ruptuer velocity

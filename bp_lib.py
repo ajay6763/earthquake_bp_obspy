@@ -26,7 +26,49 @@ import matplotlib.transforms as mtransforms
 from mpl_toolkits.basemap import Basemap
 from obspy.imaging.beachball import beach
 import numpy as np
+import scipy as scipy
+from scipy.signal import convolve2d
+from scipy.ndimage import gaussian_filter
 ########### 
+
+def moving_average(x, w):
+    """
+    Computes the moving average of a 1D numpy array x with a window size of w.
+    """
+    return np.convolve(x, np.ones(w)/w, 'same') 
+
+
+def box_space_smoothennig(signal, x_size,y_size):
+    """
+    Performs a moving average of a 2D array signal, with x_size and y_size grid units on a
+    2D singal 
+    """
+    if x_size==0 & y_size==0:
+        smoothed=signal
+    else:
+        kernel = np.ones((y_size, x_size)) / (x_size * y_size)
+        smoothed = scipy.signal.convolve2d(signal, kernel, mode='same', boundary='symm')
+    return smoothed.flatten()
+def gaussian_space_smoothennig_2D(signal, x_size,y_size):
+    """
+    Performs a guassian filtering of with x_size and y_size grid units on a
+    2D singal 
+    """
+    if x_size==0 & y_size==0:
+        smoothed=signal
+    else:
+        smoothed = scipy.ndimage.gaussian_filter(signal, sigma=(y_size, x_size))
+    return smoothed.flatten()
+def gaussian_space_smoothennig_1D(signal, w):
+    """
+    Performs a guassian filtering of with x_size and y_size grid units on a
+    2D singal 
+    """
+    if w==0:
+        smoothed=signal
+    else:
+        smoothed = scipy.ndimage.gaussian_filter(signal, sigma=(w))
+    return smoothed.flatten()
 
 def stream_info(stream_in):
     '''
@@ -157,11 +199,6 @@ def calculate_shear_mach_front_angle(super_shear_velocity):
     sin_shear_mach_front_angle = 1 / super_shear_velocity
     shear_mach_front_angle = math.degrees(math.asin(sin_shear_mach_front_angle))
     return shear_mach_front_angle
-def moving_average(x, w):
-    """
-    Computes the moving average of a 2D numpy array x with a window size of w.
-    """
-    return np.convolve(x, np.ones(w), 'same') / w
 def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
     count = len(it)
     def show(j):
