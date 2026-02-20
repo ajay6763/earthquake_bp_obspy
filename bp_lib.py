@@ -112,6 +112,18 @@ def get_stream_stack(stream_in,model,event_depth,origin_time):
     ref_trace=stack_tr
     return ref_trace
 
+def detrend_stream(stream,type='dmean'):
+    """
+    Detrend the stream traces
+    Input
+    """
+    for tr in stream:
+        if tr.stats['npts'] > 0:
+            tr.detrend(type=type)
+        else:
+            print('Trace has no data, hence not detrending')
+    return stream
+
 def detrend_normalize_stream(stream,type='dmean'):
     """
     Detrend the stream traces
@@ -615,12 +627,12 @@ def crosscorr_template(t1_trace,t2_trace,window):
             sign=1;
 
     return abs(value),shift/sps,sign
-def crosscorr_stream_prev(stream,ref_trace,window,corr_thresh=0.5):
+def crosscorr_stream_prev(stream,ref_trace,window,threshold_correlation=0.5):
     '''
     '''
     for tr in stream:
         corr,shift,sign = crosscorr_prev(ref_trace,tr,window)
-        if np.abs(corr)>=corr_thresh:
+        if np.abs(corr)>=threshold_correlation:
             tr.stats['Corr_coeff'] = corr
             tr.stats['Corr_shift']  = shift
             if corr<0:
@@ -700,7 +712,7 @@ def crosscorr_stream(stream,ref_trace,window):
         #except:
         #    stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr_P_arrival(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
+def crosscorr_stream_xcorr_P_arrival(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,threshold_correlation):
     '''
     '''
     for tr in stream:
@@ -713,7 +725,7 @@ def crosscorr_stream_xcorr_P_arrival(stream,ref_trace,time_before,time_after,max
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
+            if (abs(value) >= threshold_correlation):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
                 if value<0:
@@ -726,7 +738,7 @@ def crosscorr_stream_xcorr_P_arrival(stream,ref_trace,time_before,time_after,max
             print('Could not cross-correlate! Hence remove this waveform.')
             stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,corr_thresh):
+def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,threshold_correlation):
     '''
     This function cross-correlates traces around P arrival in an obspy stream with a reference trace.
     It also removes traces that have correlation coefficient less an input threshold
@@ -738,7 +750,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
     time_before : time before P arrival i.e., corr window
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
+    threshold_correlation : correlation value below which traces are removed.
 
     '''
     for tr in stream:
@@ -751,7 +763,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
+            if (abs(value) >= threshold_correlation):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
                 if value<0:
@@ -765,7 +777,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
             stream.remove(tr)
     return stream
 
-def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,corr_thresh):
+def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,threshold_correlation):
     '''
     This function cross-correlates traces at a point specified by a time starting from the start of the trace
     from the  in an obspy stream with a reference trace.
@@ -779,14 +791,14 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,tim
     time_before : time before P arrival i.e., corr window
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
+    threshold_correlation : correlation value below which traces are removed.
 
     '''
     for tr in stream:
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
+            if (abs(value) >= threshold_correlation):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
                 if value<0:
@@ -801,7 +813,7 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,tim
             stream.remove(tr)
     return stream
 
-def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
+def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,max_lag,bp_l,bp_u,threshold_correlation):
     '''
     This function cross-correlates traces at a point specified by a time starting from the start of the trace
     from the  in an obspy stream with a reference trace.
@@ -815,7 +827,7 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,ma
     time_before : time before P arrival i.e., corr window
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
+    threshold_correlation : correlation value below which traces are removed.
 
     '''
     for tr_ in stream:
@@ -823,7 +835,7 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,ma
             tr=tr_.copy() # working with a copy not change the data
             shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
+            if (abs(value) >= threshold_correlation):
                 tr_.stats['Corr_coeff'] = value
                 tr_.stats['Corr_shift']  = shift
                 tr_.stats['Corr_sign']  = 1.0

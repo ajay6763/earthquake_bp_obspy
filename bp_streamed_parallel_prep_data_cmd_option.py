@@ -330,7 +330,7 @@ def main(argv):
     
     ######### SNR check
     print('Total no of traces before  SNR criteria:', len(stream_work))
-    stream_work = bp_lib.snr_check(stream_work,SNR,SNR_window,SNR_window)
+    #stream_work = bp_lib.snr_check(stream_work,SNR,SNR_window,SNR_window)
     print('Total no of traces after SNR criteria:', len(stream_work))
 
     ##########################################################################
@@ -351,8 +351,8 @@ def main(argv):
     #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,threshold_correlation)
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
     #                                          bp_l,bp_u,threshold_correlation)
-    #stream_work=bp_lib.crosscorr_stream_xcorr_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,threshold_correlation)
-    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    stream_work=bp_lib.crosscorr_stream_xcorr_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,threshold_correlation)
+    #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
     #stream_work=bp_lib.crosscorr_stream_prev(stream_work,ref_trace,corr_window,0)
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
     #                                                    threshold_correlation)
