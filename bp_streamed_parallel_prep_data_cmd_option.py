@@ -348,7 +348,7 @@ def main(argv):
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
     #                                          bp_l,bp_u,threshold_correlation)
     
-    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
+    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation,mode='dummy')
     
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
     #                                                    threshold_correlation)

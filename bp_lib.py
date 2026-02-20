@@ -158,9 +158,42 @@ def calculate_shear_mach_front_angle(super_shear_velocity):
     return shear_mach_front_angle
 def moving_average(x, w):
     """
-    Computes the moving average of a 2D numpy array x with a window size of w.
+    Computes the moving average of a 1D numpy array x with a window size of w.
     """
-    return np.convolve(x, np.ones(w), 'same') / w
+    return np.convolve(x, np.ones(w)/w, 'same') 
+
+
+def box_space_smoothennig(signal, x_size,y_size):
+    """
+    Performs a moving average of a 2D array signal, with x_size and y_size grid units on a
+    2D singal 
+    """
+    if x_size==0 & y_size==0:
+        smoothed=signal
+    else:
+        kernel = np.ones((y_size, x_size)) / (x_size * y_size)
+        smoothed = scipy.signal.convolve2d(signal, kernel, mode='same', boundary='symm')
+    return smoothed.flatten()
+def gaussian_space_smoothennig_2D(signal, x_size,y_size):
+    """
+    Performs a guassian filtering of with x_size and y_size grid units on a
+    2D singal 
+    """
+    if x_size==0 & y_size==0:
+        smoothed=signal
+    else:
+        smoothed = scipy.ndimage.gaussian_filter(signal, sigma=(y_size, x_size))
+    return smoothed.flatten()
+def gaussian_space_smoothennig_1D(signal, w):
+    """
+    Performs a guassian filtering of with x_size and y_size grid units on a
+    2D singal 
+    """
+    if w==0:
+        smoothed=signal
+    else:
+        smoothed = scipy.ndimage.gaussian_filter(signal, sigma=(w))
+    return smoothed.flatten()
 def progressbar(it, prefix="", size=60, out=sys.stdout): # Python3.3+
     count = len(it)
     def show(j):
@@ -618,7 +651,7 @@ def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,
             print('Could not cross-correlate! Hence remove this waveform.')
             stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,corr_thresh):
+def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,corr_thresh,mode='normal'):
     '''
     This function cross-correlates traces around P arrival in an obspy stream with a reference trace.
     It also removes traces that have correlation coefficient less an input threshold
@@ -631,27 +664,36 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
     corr_thresh : correlation value below which traces are removed.
+    mode : if 'dummy' then not performing cross-correlation and assign dummy values to correlation coeff, shift and sign
 
     '''
-    for tr in stream:
-        '''
-        shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr, t_before=5, t_after=10, cc_maxlag=5) #,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-        tr.stats['Corr_coeff'] = value
-        tr.stats['Corr_shift']  = shift
-        tr.stats['Corr_sign']  = 1
-        '''
-        try:
-            shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
-                t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
-                tr.stats['Corr_coeff'] = value
-                tr.stats['Corr_shift']  = shift
-                tr.stats['Corr_sign']  = 1.0
-            else:
+    if mode=='dummy':
+        print('This is a dummy function. Hence not performing cross-correlation!')
+        for tr in stream:
+            tr.stats['Corr_coeff'] = 1.0
+            tr.stats['Corr_shift']  = 0
+            tr.stats['Corr_sign']  = 1.0
+    else:
+        for tr in stream:
+
+            '''
+            shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr, t_before=5, t_after=10, cc_maxlag=5) #,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+            tr.stats['Corr_coeff'] = value
+            tr.stats['Corr_shift']  = shift
+            tr.stats['Corr_sign']  = 1
+            '''
+            try:
+                shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
+                    t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
+                if (abs(value) >= corr_thresh):
+                    tr.stats['Corr_coeff'] = value
+                    tr.stats['Corr_shift']  = shift
+                    tr.stats['Corr_sign']  = 1.0
+                else:
+                    stream.remove(tr)
+            except:
+                print('Could not cross-correlate! Hence remove this waveform.')
                 stream.remove(tr)
-        except:
-            print('Could not cross-correlate! Hence remove this waveform.')
-            stream.remove(tr)
     return stream
 
 def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,corr_thresh):

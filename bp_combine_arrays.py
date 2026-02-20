@@ -192,13 +192,18 @@ beam_smoothened_=np.zeros_like(beam_use)
 m,n=np.shape(beam_smoothened_)
 #time by looing through space grid
 for i in range(m):
-    beam_smoothened_[i,:]=bp_lib.moving_average(beam_use[i,:],smooth_time_window*sps)
+    beam_smoothened_[i,:]=bp_lib.moving_average(beam_smoothened_[i,:],smooth_time_window*sps)
 #space
+x=np.arange(event_long-source_grid_extend_x,event_long+source_grid_extend_x,source_grid_size)
+y=np.arange(event_lat-source_grid_extend_y,event_lat+source_grid_extend_y,source_grid_size)
 for i in range(n):
-    beam_smoothened_[:,i]=bp_lib.moving_average(beam_use[:,i],smooth_space_window)
-beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) #np.square(beam_smoothened_)/np.max(np.square(beam_smoothened_))
-print('Maximum energy of the beam:',np.max(beam_smoothened))
-################################
+    x_size=smooth_space_window
+    y_size=smooth_space_window
+    signal=beam_smoothened_[:,i].reshape((len(x),len(y)))
+    #beam_smoothened_[:,i]=gaussian_space_smoothennig_2D(signal,x_size,y_size)
+    beam_smoothened_[:,i]=bp_lib.box_space_smoothennig(signal,x_size,y_size)
+beam_smoothened=beam_smoothened_/np.max(beam_smoothened_) 
+print('Maximum energy of the beam:',np.max(beam_smoothened))################################
 # getting the STF
 stf_beam      = np.sum(beam_use,axis=0)
 print('Size of STF:', np.shape(stf_beam))
