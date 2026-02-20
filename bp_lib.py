@@ -11,7 +11,7 @@ from obspy.geodetics.base import gps2dist_azimuth
 from obspy.signal.cross_correlation import xcorr_pick_correction # for cross-correlation
 from obspy.signal.trigger import recursive_sta_lta_py
 from scipy import signal
-
+import scipy as scipy
 from bisect import bisect_left
 from copy import copy
 import warnings
