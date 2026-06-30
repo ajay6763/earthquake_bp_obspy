@@ -8,7 +8,7 @@ import sys,os,time
 from obspy.taup import TauPyModel
 from obspy.geodetics import locations2degrees
 from obspy.geodetics.base import gps2dist_azimuth
-from obspy.signal.cross_correlation import xcorr_pick_correction # for cross-correlation
+#from obspy.signal.cross_correlation import xcorr_pick_correction # for cross-correlation
 from obspy.signal.trigger import recursive_sta_lta_py
 from scipy import signal
 import scipy as scipy
@@ -628,30 +628,43 @@ def crosscorr_stream(stream,ref_trace,window):
         #except:
         #    stream.remove(tr)
     return stream
-def crosscorr_stream_xcorr(stream,ref_trace,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
+
+
+
+def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,max_lag,bp_l,bp_u,threshold_correlation):
     '''
+    This function cross-correlates traces at a point specified by a time starting from the start of the trace
+    from the  in an obspy stream with a reference trace.
+    It also removes traces that have correlation coefficient less an input threshold
+    Note: traces are not filtered before cross-correlation
+
+    Input:
+    stream : obspy stream
+    ref_trace : reference trace in the stream
+    time_start : time after the startime of the trace
+    time_before : time before P arrival i.e., corr window
+    time_after : time after P arrival,i.e., corr window
+    max_lag : maximum lag for cross-correlation 
+    threshold_correlation : correlation value below which traces are removed.
+
     '''
-    for tr in stream:
-        '''
-        shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr, t_before=5, t_after=10, cc_maxlag=5) #,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-        tr.stats['Corr_coeff'] = value
-        tr.stats['Corr_shift']  = shift
-        tr.stats['Corr_sign']  = 1
-        '''
+    for tr_ in stream:
         try:
-            shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
+            tr=tr_.copy() # working with a copy not change the data
+            shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
-                tr.stats['Corr_coeff'] = value
-                tr.stats['Corr_shift']  = shift
-                tr.stats['Corr_sign']  = 1.0
+            if (abs(value) >= threshold_correlation):
+                tr_.stats['Corr_coeff'] = value
+                tr_.stats['Corr_shift']  = shift
+                tr_.stats['Corr_sign']  = 1.0
             else:
-                stream.remove(tr)
+                stream.remove(tr_)
         except:
             print('Could not cross-correlate! Hence remove this waveform.')
-            stream.remove(tr)
+            stream.remove(tr_)
     return stream
-def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,corr_thresh,mode='normal'):
+
+def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time_after,max_lag,threshold_correlation,mode='normal'):
     '''
     This function cross-correlates traces around P arrival in an obspy stream with a reference trace.
     It also removes traces that have correlation coefficient less an input threshold
@@ -663,7 +676,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
     time_before : time before P arrival i.e., corr window
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
+    threshold_correlation : correlation value below which traces are removed.
     mode : if 'dummy' then not performing cross-correlation and assign dummy values to correlation coeff, shift and sign
 
     '''
@@ -685,7 +698,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
             try:
                 shift, value = xcorr_pick_correction(ref_trace.stats.P_arrival, ref_trace,tr.stats.P_arrival, tr,
                     t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-                if (abs(value) >= corr_thresh):
+                if (abs(value) >= threshold_correlation):
                     tr.stats['Corr_coeff'] = value
                     tr.stats['Corr_shift']  = shift
                     tr.stats['Corr_sign']  = 1.0
@@ -696,7 +709,7 @@ def crosscorr_stream_xcorr_no_filter_P_arrival(stream,ref_trace,time_before,time
                 stream.remove(tr)
     return stream
 
-def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,corr_thresh):
+def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,time_after,max_lag,threshold_correlation):
     '''
     This function cross-correlates traces at a point specified by a time starting from the start of the trace
     from the  in an obspy stream with a reference trace.
@@ -710,14 +723,14 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,tim
     time_before : time before P arrival i.e., corr window
     time_after : time after P arrival,i.e., corr window
     max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
+    threshold_correlation : correlation value below which traces are removed.
 
     '''
     for tr in stream:
         try:
             shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
                 t_before=time_before, t_after=time_after, cc_maxlag=max_lag)#,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
+            if (abs(value) >= threshold_correlation):
                 tr.stats['Corr_coeff'] = value
                 tr.stats['Corr_shift']  = shift
                 tr.stats['Corr_sign']  = 1.0
@@ -729,38 +742,6 @@ def crosscorr_stream_xcorr_no_filter(stream,ref_trace,time_start,time_before,tim
             stream.remove(tr)
     return stream
 
-def crosscorr_stream_xcorr(stream,ref_trace,time_start,time_before,time_after,max_lag,bp_l,bp_u,corr_thresh):
-    '''
-    This function cross-correlates traces at a point specified by a time starting from the start of the trace
-    from the  in an obspy stream with a reference trace.
-    It also removes traces that have correlation coefficient less an input threshold
-    Note: traces are not filtered before cross-correlation
-
-    Input:
-    stream : obspy stream
-    ref_trace : reference trace in the stream
-    time_start : time after the startime of the trace
-    time_before : time before P arrival i.e., corr window
-    time_after : time after P arrival,i.e., corr window
-    max_lag : maximum lag for cross-correlation 
-    corr_thresh : correlation value below which traces are removed.
-
-    '''
-    for tr_ in stream:
-        try:
-            tr=tr_.copy() # working with a copy not change the data
-            shift, value = xcorr_pick_correction(ref_trace.stats.starttime+time_start, ref_trace,tr.stats.starttime+time_start, tr,
-                t_before=time_before, t_after=time_after, cc_maxlag=max_lag,filter="bandpass",filter_options={'freqmin': bp_l, 'freqmax': bp_u})
-            if (abs(value) >= corr_thresh):
-                tr_.stats['Corr_coeff'] = value
-                tr_.stats['Corr_shift']  = shift
-                tr_.stats['Corr_sign']  = 1.0
-            else:
-                stream.remove(tr_)
-        except:
-            print('Could not cross-correlate! Hence remove this waveform.')
-            stream.remove(tr_)
-    return stream
 
 
 def snr_calc(tr, noise_window, signal_window):
@@ -1012,16 +993,17 @@ def make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,
             slong.append(x[i])
             slat.append(y[j])
     return slong,slat
-def make_source_grid_3D(event_long,event_lat,source_grid_extend,source_grid_size,depth_min,depth_max,depth_inc):
+def make_source_grid_3D(event_long,event_lat,source_grid_extend_x,
+                            source_grid_extend_y,source_grid_size,depth_min,depth_max,depth_inc):
     '''
     This function makes potential source grid around the epicentre in a area
     defined by a constant source_grid_extend discretized at a constant
     source_grid_size
-    Retunrs   slat ,slong
+    Retunrs   slat ,slong, sdepth    
 
     '''
-    x=np.arange(event_long-source_grid_extend,event_long+source_grid_extend,source_grid_size)
-    y=np.arange(event_lat-source_grid_extend,event_lat+source_grid_extend,source_grid_size)
+    x=np.arange(event_long-source_grid_extend_x,event_long+source_grid_extend_x,source_grid_size)
+    y=np.arange(event_lat-source_grid_extend_y,event_lat+source_grid_extend_y,source_grid_size)
     z=np.arange(depth_min,depth_max,depth_inc)
     slat = []
     slong = []

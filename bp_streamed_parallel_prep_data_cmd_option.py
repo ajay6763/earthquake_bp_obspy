@@ -127,8 +127,9 @@ def main(argv):
     source_grid_size    = float(res['source_grid_size']) #degrees
     source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
     source_grid_extend_y  = float(res['source_grid_extend_y'])   #degrees
-    source_depth_size   = float(res['source_depth_size']) #km
-    source_depth_extend = float(res['source_grid_extend']) #km
+#    source_depth_min  = float(res['source_depth_min']) #km
+#    source_depth_max  = float(res['source_depth_max']) #km
+#    source_depth_inc  = float(res['source_depth_inc']) #km
     try:
         opts, args = getopt.getopt(argv,"h:p:I:i:O:o:E:s:a:d:B:C:S:A:G:g:",["help=","processes=","Input_dir=","input_file=",\
                                                             "Output_dir=","output_file=","Exp_name=","sps=","azimuth_range="\
@@ -297,37 +298,36 @@ def main(argv):
     ##########################################################################
     # processing stream for distance,snr,azimuth and cutting
     ##########################################################################
-    # SPS 
-    print('Total no of traces before decimation criteria:', len(stream_work))
-    stream_work = bp_lib.check_sps(stream_work,sps)
-    print('Total no of traces after decimation criteria:', len(stream_work))
+    ######### azimuth
+    print('Total no of traces before  azimuth criteria:', len(stream_work))
+    stream_work = bp_lib.check_azimuth(stream_work,azimuth_min,azimuth_max)
+    print('Total no of traces after azimuth criteria:', len(stream_work))
     ######### distance
     print('Total no of traces before  distance criteria:', len(stream_work))
     stream_work = bp_lib.check_distance(stream_work,dist_min,dist_max)
     print('Total no of traces after distance criteria:', len(stream_work))
 
-    ######### azimuth
-    print('Total no of traces before  azimuth criteria:', len(stream_work))
-    stream_work = bp_lib.check_azimuth(stream_work,azimuth_min,azimuth_max)
-    print('Total no of traces after azimuth criteria:', len(stream_work))
+    # SPS 
+    print('Total no of traces before decimation criteria:', len(stream_work))
+    stream_work = bp_lib.check_sps(stream_work,sps)
+    print('Total no of traces after decimation criteria:', len(stream_work))
   
     ##########################################################################
     # CUtting before and after P arrival 
     ##########################################################################
-    #stream_cut=stream_work.copy()
     print('Total no of traces before data gap checks:', len(stream_work))
     stream_work=bp_lib.stream_cut_P_arrival_normalize(stream_work,Start_P_cut_time,End_P_cut_time)
     print('Total no of traces after cutting and data gap checks ', len(stream_work))
-    
-    ######### removing mean
-    print('Total no of traces before removing mean:', len(stream_work))
-    stream_work= bp_lib.detrend_stream(stream_work,type='demean')
-    print('Total no of traces after removing mean:', len(stream_work))
-    
     ######### SNR check
     print('Total no of traces before  SNR criteria:', len(stream_work))
     stream_work = bp_lib.snr_check(stream_work,SNR,snr_window,snr_window)
     print('Total no of traces after SNR criteria:', len(stream_work))
+    ######### removing mean
+    #print('Total no of traces before removing mean:', len(stream_work))
+    #stream_work= bp_lib.detrend_stream(stream_work,type='demean')
+    #print('Total no of traces after removing mean:', len(stream_work))
+    
+
 
     ##########################################################################
     # cross-correlation
@@ -345,26 +345,24 @@ def main(argv):
     #print('Total no of traces before Cross-correlation:', len(stream_work))
     #print('Performning cross-correlation. Without filtering')
     #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,threshold_correlation)
-    #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
-    #                                          bp_l,bp_u,threshold_correlation)
+    stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
+                                              bp_l,bp_u,threshold_correlation)
     
-    stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation,mode='normal')
+    #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter_P_arrival(stream_work,ref_trace,corr_window,corr_window,corr_window,threshold_correlation,mode='normal')
     
     #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,corr_window,corr_window,corr_window,bp_l,bp_u,
     #                                                    threshold_correlation)
     print('Total no of traces after Cross-correlation:', len(stream_work))
     ##########################################################################
     # cross-correlation
-    #Ref_station_index=bp_lib.get_ref_station(stream_work)
-    #ref_trace = stream_work[Ref_station_index]
-    #print('Total no of traces before Cross-correlation:', len(stream_work))
+    Ref_station_index=bp_lib.get_ref_station(stream_work)
+    ref_trace = stream_work[Ref_station_index]
+    print('Total no of traces before Cross-correlation:', len(stream_work))
     #print('Performning cross-correlation. Without filtering')
     #stream_work=bp_lib.crosscorr_stream_xcorr_no_filter(stream_work,\
     #                                                    ref_trace,corr_window,corr_window,corr_window,threshold_correlation)
-    #stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,\
-    #                                                    ref_trace,corr_window,corr_window,corr_window,
-    #                                                    bp_l,bp_u,
-    #                                                    threshold_correlation)
+    stream_work=bp_lib.crosscorr_stream_xcorr(stream_work,ref_trace,Start_P_cut_time,corr_window,corr_window,corr_window,
+                                              bp_l,bp_u,threshold_correlation)
     print('Total no of traces after Cross-correlation:', len(stream_work))
   
     ##########################
@@ -375,6 +373,8 @@ def main(argv):
     ##########################################################################
     #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
     slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
+    #slong,slat,         =  bp_lib.make_source_grid_3D(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size,source_depth_min,source_depth_max,source_depth_inc)
+    
     ##########################################################################
     print('Finished preparing data.')
     print("Total time taken: {:.1f} min".format((time.time()-time_start)/60.0))
