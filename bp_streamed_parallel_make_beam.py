@@ -69,9 +69,13 @@ source_grid_size    = float(res['source_grid_size']) #degrees
 #source_grid_extend  = float(res['source_grid_extend'])   #degrees
 source_grid_extend_x  = float(res['source_grid_extend_x'])   #degrees
 source_grid_extend_y  = float(res['source_grid_extend_y'])   #degrees
-source_depth_size   = float(res['source_depth_size']) #km
+#source_depth_min  = float(res['source_depth_min']) #km
+#source_depth_max  = float(res['source_depth_max']) #km
+#source_depth_inc  = float(res['source_depth_inc']) #km
+
 #slong,slat          = bp_lib.make_source_grid(event_long,event_lat,source_grid_extend,source_grid_size)
 slong,slat          = bp_lib.make_source_grid_hetero(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size)
+#slong,slat,sdepth         =  bp_lib.make_source_grid_3D(event_long,event_lat,source_grid_extend_x,source_grid_extend_y,source_grid_size,source_depth_min,source_depth_max,source_depth_inc)
 
 stations_file = str(res['stations'])
 stream_for_bp= obspy.read('./'+name+'/stream.mseed') 
